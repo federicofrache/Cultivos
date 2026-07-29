@@ -11,7 +11,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import {
   Sprout, Snowflake, Sun, Wheat, Receipt, Mic, Camera, MapPin, TrendingUp,
   TrendingDown, Plus, Trash2, Loader2, LogOut, ChevronRight, ChevronLeft,
-  Truck, DollarSign, FileText, AlertCircle, CheckCircle2, Paperclip, Pencil, X,
+  Truck, DollarSign, FileText, AlertCircle, CheckCircle2, Paperclip, Pencil, X, Package, Boxes,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -139,6 +139,8 @@ export default function App() {
   const [campanias, setCampanias] = useState([]);
   const [cultivos, setCultivos] = useState([]);
   const [lotes, setLotes] = useState([]);
+  const [insumosCompras, setInsumosCompras] = useState([]);
+  const [gastosTodos, setGastosTodos] = useState([]);
   const [nav, setNav] = useState({ view: "campanias", campaniaId: null, cultivoId: null });
 
   useEffect(() => onAuthStateChanged(auth, (u) => setUser(u)), []);
@@ -148,7 +150,9 @@ export default function App() {
     const u1 = onSnapshot(collection(db, "campanias"), (s) => setCampanias(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
     const u2 = onSnapshot(collection(db, "cultivos"), (s) => setCultivos(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
     const u3 = onSnapshot(collection(db, "lotes"), (s) => setLotes(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
-    return () => { u1(); u2(); u3(); };
+    const u4 = onSnapshot(collection(db, "insumos_compras"), (s) => setInsumosCompras(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const u5 = onSnapshot(collection(db, "gastos"), (s) => setGastosTodos(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => { u1(); u2(); u3(); u4(); u5(); };
   }, [user]);
 
   if (user === undefined) {
@@ -168,6 +172,29 @@ export default function App() {
     add: (data) => addDoc(collection(db, "lotes"), data),
     remove: (id) => deleteDoc(doc(db, "lotes", id)),
   };
+  const insumosApi = {
+    add: (data) => addDoc(collection(db, "insumos_compras"), data),
+    remove: (id) => deleteDoc(doc(db, "insumos_compras", id)),
+  };
+
+  // Stock disponible por insumo = total comprado - total consumido en gastos de cultivos
+  const stockInsumos = (() => {
+    const mapa = {};
+    insumosCompras.forEach((c) => {
+      const k = c.nombre;
+      if (!mapa[k]) mapa[k] = { nombre: k, litrosComprados: 0, costoComprado: 0, litrosConsumidos: 0 };
+      mapa[k].litrosComprados += Number(c.litros || 0);
+      mapa[k].costoComprado += Number(c.precio || 0);
+    });
+    gastosTodos.forEach((g) => {
+      if (g.insumoNombre && mapa[g.insumoNombre]) mapa[g.insumoNombre].litrosConsumidos += Number(g.litrosUsados || 0);
+    });
+    return Object.values(mapa).map((i) => ({
+      ...i,
+      disponible: i.litrosComprados - i.litrosConsumidos,
+      costoPromedioPorLitro: i.litrosComprados ? i.costoComprado / i.litrosComprados : 0,
+    }));
+  })();
 
   const campaniaActual = campanias.find((c) => c.id === nav.campaniaId);
   const cultivoActual = cultivos.find((c) => c.id === nav.cultivoId);
@@ -185,6 +212,9 @@ export default function App() {
             </div>
           </button>
           <div className="flex items-center gap-3">
+            <button onClick={() => setNav({ view: "insumos", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
+              <Package size={13} /> Insumos
+            </button>
             <button onClick={() => setNav({ view: "lotes", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
               <MapPin size={13} /> Lotes
             </button>
@@ -204,16 +234,18 @@ export default function App() {
             onOpen={(id) => setNav({ view: "cultivo", campaniaId: campaniaActual.id, cultivoId: id })} />
         )}
 
-        {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} user={user} />}
+        {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} user={user} stockInsumos={stockInsumos} />}
 
         {nav.view === "lotes" && <LotesView lotes={lotes} api={lotesApi} />}
+
+        {nav.view === "insumos" && <InsumosView compras={insumosCompras} api={insumosApi} stockInsumos={stockInsumos} user={user} />}
       </main>
     </div>
   );
 }
 
 function Breadcrumb({ nav, setNav, campania, cultivo }) {
-  if (nav.view === "campanias" || nav.view === "lotes") return null;
+  if (nav.view === "campanias" || nav.view === "lotes" || nav.view === "insumos") return null;
   return (
     <div className="flex items-center gap-1 mb-4" style={{ fontSize: 13, color: "#8A8570" }}>
       <button onClick={() => setNav({ view: "campanias", campaniaId: null, cultivoId: null })} style={{ color: "var(--frost)", fontWeight: 600 }}>Campañas</button>
@@ -349,7 +381,7 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
 /* ------------------------------------------------------------------ */
 /*  Detalle de un cultivo: Resumen / Gastos / Ventas / Remitos          */
 /* ------------------------------------------------------------------ */
-function CultivoDetail({ cultivo, lotes, user }) {
+function CultivoDetail({ cultivo, lotes, user, stockInsumos }) {
   const [tab, setTab] = useState("resumen");
   const [gastos, setGastos] = useState([]);
   const [ventas, setVentas] = useState([]);
@@ -423,7 +455,7 @@ function CultivoDetail({ cultivo, lotes, user }) {
         </div>
       )}
 
-      {tab === "gastos" && <GastosTab cultivo={cultivo} gastos={gastos} api={gastosApi} user={user} />}
+      {tab === "gastos" && <GastosTab cultivo={cultivo} gastos={gastos} api={gastosApi} user={user} stockInsumos={stockInsumos} />}
       {tab === "ventas" && <VentasTab cultivo={cultivo} ventas={ventas} api={ventasApi} />}
       {tab === "remitos" && <RemitosTab cultivo={cultivo} remitos={remitos} api={remitosApi} lotes={lotes} totalToneladasVentas={totalToneladasVentas} />}
     </div>
@@ -447,9 +479,12 @@ function MiniStat({ label, value }) {
 /* ------------------------------------------------------------------ */
 const emptyGasto = (email) => ({ origen: "", monto: "", detalle: "", fecha: "", usuario: email });
 
-function GastosTab({ cultivo, gastos, api, user }) {
+function GastosTab({ cultivo, gastos, api, user, stockInsumos }) {
   const [form, setForm] = useState(emptyGasto(user.email));
   const [editId, setEditId] = useState(null);
+  const [tipo, setTipo] = useState("general"); // "general" | "insumo"
+  const [insumoSel, setInsumoSel] = useState("");
+  const [litrosUsados, setLitrosUsados] = useState("");
   const [archivo, setArchivo] = useState(null);
   const [preview, setPreview] = useState(null);
   const [subiendo, setSubiendo] = useState(false);
@@ -462,15 +497,24 @@ function GastosTab({ cultivo, gastos, api, user }) {
   const set = (k, v) => setForm({ ...form, [k]: v });
 
   const origenesSugeridos = Array.from(new Set(gastos.map((g) => g.origen).filter(Boolean)));
+  const insumoElegido = stockInsumos.find((i) => i.nombre === insumoSel);
+  const montoCalculado = insumoElegido ? Number(litrosUsados || 0) * insumoElegido.costoPromedioPorLitro : 0;
 
   const editar = (g) => {
     setEditId(g.id);
-    setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email });
+    if (g.insumoNombre) {
+      setTipo("insumo"); setInsumoSel(g.insumoNombre); setLitrosUsados(String(g.litrosUsados ?? ""));
+      setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email });
+    } else {
+      setTipo("general"); setInsumoSel(""); setLitrosUsados("");
+      setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email });
+    }
     setArchivo(null); setPreview(null); setTranscripcion(""); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const cancelarEdicion = () => {
     setEditId(null); setForm(emptyGasto(user.email)); setArchivo(null); setPreview(null); setTranscripcion("");
+    setTipo("general"); setInsumoSel(""); setLitrosUsados("");
   };
 
   const onFile = (e) => {
@@ -514,7 +558,13 @@ function GastosTab({ cultivo, gastos, api, user }) {
   };
 
   const guardar = async () => {
-    if (!form.origen || !form.monto || !form.fecha) { alert("Completá al menos origen, monto y fecha."); return; }
+    if (tipo === "insumo") {
+      if (!insumoSel || !litrosUsados || !form.fecha) { alert("Elegí el insumo, los litros usados y la fecha."); return; }
+      if (!editId && Number(litrosUsados) > (insumoElegido?.disponible || 0)) {
+        if (!confirm(`Solo hay ${fmt(insumoElegido?.disponible || 0, 1)} litros disponibles de ${insumoSel}. ¿Registrar igual el consumo?`)) return;
+      }
+    } else if (!form.origen || !form.monto || !form.fecha) { alert("Completá al menos origen, monto y fecha."); return; }
+
     let facturaUrl, facturaNombre;
     if (archivo) {
       setSubiendo(true);
@@ -527,7 +577,16 @@ function GastosTab({ cultivo, gastos, api, user }) {
       } catch (e) { alert("No se pudo subir la factura adjunta, pero se guardará el gasto sin el archivo."); }
       setSubiendo(false);
     }
-    const datos = { origen: form.origen, monto: Number(form.monto), detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email };
+
+    let datos;
+    if (tipo === "insumo") {
+      datos = {
+        origen: form.origen || insumoSel, monto: montoCalculado, detalle: form.detalle || `Consumo de ${insumoSel} — ${litrosUsados} L`,
+        fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: insumoSel, litrosUsados: Number(litrosUsados), costoPorLitro: insumoElegido?.costoPromedioPorLitro || 0,
+      };
+    } else {
+      datos = { origen: form.origen, monto: Number(form.monto), detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: null, litrosUsados: null };
+    }
     if (archivo) { datos.facturaUrl = facturaUrl; datos.facturaNombre = facturaNombre; }
 
     if (editId) {
@@ -536,6 +595,7 @@ function GastosTab({ cultivo, gastos, api, user }) {
       await api.add({ cultivoId: cultivo.id, ...datos, facturaUrl: facturaUrl || null, facturaNombre: facturaNombre || null });
     }
     setEditId(null); setForm(emptyGasto(user.email)); setArchivo(null); setPreview(null); setTranscripcion("");
+    setTipo("general"); setInsumoSel(""); setLitrosUsados("");
   };
 
   const eliminar = (id) => { if (confirm("¿Eliminar este gasto?")) api.remove(id); };
@@ -566,17 +626,39 @@ function GastosTab({ cultivo, gastos, api, user }) {
           </div>
         )}
 
-        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))" }}>
-          <div>
-            <label style={{ fontSize: 12, color: "#8A8570" }}>Origen</label>
-            <input className="cc-input" list="origenes-gastos" value={form.origen} onChange={(e) => set("origen", e.target.value)} placeholder="Proveedor, gasoil, renta..." />
-            <datalist id="origenes-gastos">{origenesSugeridos.map((o) => <option key={o} value={o} />)}</datalist>
-          </div>
-          <div><label style={{ fontSize: 12, color: "#8A8570" }}>Monto (U$S)</label><input className="cc-input" type="number" value={form.monto} onChange={(e) => set("monto", e.target.value)} /></div>
-          <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
-          <div><label style={{ fontSize: 12, color: "#8A8570" }}>Usuario</label><input className="cc-input" value={form.usuario} disabled /></div>
-          <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 12, color: "#8A8570" }}>Detalle</label><input className="cc-input" value={form.detalle} onChange={(e) => set("detalle", e.target.value)} placeholder="Descripción del gasto" /></div>
+        <div className="flex gap-2">
+          <button className="cc-btn" onClick={() => setTipo("general")} style={{ background: tipo === "general" ? "var(--soil)" : "#fff", color: tipo === "general" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Gasto general</button>
+          <button className="cc-btn" onClick={() => setTipo("insumo")} style={{ background: tipo === "insumo" ? "var(--soil)" : "#fff", color: tipo === "insumo" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}><Boxes size={14} /> Insumo de stock</button>
         </div>
+
+        {tipo === "insumo" ? (
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))" }}>
+            <div>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Insumo</label>
+              <select className="cc-input" value={insumoSel} onChange={(e) => setInsumoSel(e.target.value)}>
+                <option value="">Elegir...</option>
+                {stockInsumos.map((i) => <option key={i.nombre} value={i.nombre}>{i.nombre} ({fmt(i.disponible, 1)} L disp.)</option>)}
+              </select>
+              {stockInsumos.length === 0 && <div style={{ fontSize: 11.5, color: "#8A8570" }}>No hay insumos cargados todavía — cargalos desde "Insumos" en el menú superior.</div>}
+            </div>
+            <div><label style={{ fontSize: 12, color: "#8A8570" }}>Litros usados</label><input className="cc-input" type="number" value={litrosUsados} onChange={(e) => setLitrosUsados(e.target.value)} /></div>
+            <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
+            <div><label style={{ fontSize: 12, color: "#8A8570" }}>Costo estimado</label><input className="cc-input" value={fmtUSD(montoCalculado)} disabled /></div>
+            <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 12, color: "#8A8570" }}>Detalle (opcional)</label><input className="cc-input" value={form.detalle} onChange={(e) => set("detalle", e.target.value)} placeholder={insumoSel ? `Consumo de ${insumoSel}` : ""} /></div>
+          </div>
+        ) : (
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))" }}>
+            <div>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Origen</label>
+              <input className="cc-input" list="origenes-gastos" value={form.origen} onChange={(e) => set("origen", e.target.value)} placeholder="Proveedor, gasoil, renta..." />
+              <datalist id="origenes-gastos">{origenesSugeridos.map((o) => <option key={o} value={o} />)}</datalist>
+            </div>
+            <div><label style={{ fontSize: 12, color: "#8A8570" }}>Monto (U$S)</label><input className="cc-input" type="number" value={form.monto} onChange={(e) => set("monto", e.target.value)} /></div>
+            <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
+            <div><label style={{ fontSize: 12, color: "#8A8570" }}>Usuario</label><input className="cc-input" value={form.usuario} disabled /></div>
+            <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 12, color: "#8A8570" }}>Detalle</label><input className="cc-input" value={form.detalle} onChange={(e) => set("detalle", e.target.value)} placeholder="Descripción del gasto" /></div>
+          </div>
+        )}
         {editId && archivo === null && <div style={{ fontSize: 12, color: "#8A8570" }}>La factura adjunta actual se mantiene salvo que subas una nueva arriba.</div>}
         <div className="flex gap-2">
           <button className="cc-btn cc-btn-primary" onClick={guardar} disabled={subiendo}>
@@ -594,7 +676,10 @@ function GastosTab({ cultivo, gastos, api, user }) {
               {[...gastos].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((g) => (
                 <tr key={g.id} style={{ borderTop: "1px solid var(--line)", background: editId === g.id ? "#FDF3E0" : "transparent" }}>
                   <td className="px-3 py-2 cc-mono">{g.fecha}</td>
-                  <td className="px-3 py-2">{g.origen}</td>
+                  <td className="px-3 py-2">
+                    {g.origen}
+                    {g.insumoNombre && <span className="cc-chip" style={{ background: "#EDE7F6", color: "#5B4B8A", marginLeft: 6 }}>{fmt(g.litrosUsados, 1)} L</span>}
+                  </td>
                   <td className="px-3 py-2" style={{ color: "#5A5647" }}>{g.detalle}</td>
                   <td className="px-3 py-2" style={{ color: "#8A8570", fontSize: 12 }}>{g.usuario}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmtUSD(g.monto)}</td>
@@ -764,3 +849,171 @@ function LotesView({ lotes, api }) {
   );
 }
 
+/* ------------------------------------------------------------------ */
+/*  Insumos (compras + stock, referencia global)                        */
+/* ------------------------------------------------------------------ */
+const emptyItemInsumo = () => ({ nombre: "", litros: "", precio: "" });
+
+function InsumosView({ compras, api, stockInsumos, user }) {
+  const [fecha, setFecha] = useState("");
+  const [origen, setOrigen] = useState("");
+  const [items, setItems] = useState([emptyItemInsumo()]);
+  const [archivo, setArchivo] = useState(null);
+  const [preview, setPreview] = useState(null);
+  const [mediaType, setMediaType] = useState("image/jpeg");
+  const [imgB64, setImgB64] = useState(null);
+  const [extrayendo, setExtrayendo] = useState(false);
+  const [subiendo, setSubiendo] = useState(false);
+  const [error, setError] = useState("");
+
+  const origenesSugeridos = Array.from(new Set(compras.map((c) => c.origen).filter(Boolean)));
+  const nombresSugeridos = Array.from(new Set(compras.map((c) => c.nombre).filter(Boolean)));
+
+  const setItem = (i, next) => setItems(items.map((it, idx) => (idx === i ? next : it)));
+  const agregarItem = () => setItems([...items, emptyItemInsumo()]);
+  const quitarItem = (i) => setItems(items.filter((_, idx) => idx !== i));
+
+  const onFile = async (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    setArchivo(f);
+    setMediaType(f.type || "image/jpeg");
+    if (f.type.startsWith("image/")) { setPreview(URL.createObjectURL(f)); setImgB64(await fileToBase64(f)); }
+    else { setPreview(null); setImgB64(null); }
+  };
+
+  const extraer = async () => {
+    if (!imgB64) { setError("La extracción automática funciona con fotos (JPG/PNG) de la factura."); return; }
+    setExtrayendo(true); setError("");
+    try {
+      const data = await askClaudeJSON([
+        { type: "image", source: { type: "base64", media_type: mediaType, data: imgB64 } },
+        { type: "text", text: `Esta imagen es una factura de compra de insumos agropecuarios (agroquímicos, fertilizantes, combustible, etc.) en Uruguay. Devolvé SOLO un JSON (sin texto extra, sin markdown) con: {"origen":"nombre del proveedor","fecha":"YYYY-MM-DD o vacío","items":[{"nombre":"nombre del insumo","litros":number (cantidad total en litros o unidad equivalente),"precio":number (precio TOTAL pagado por esa cantidad, en dólares)}]}. Incluí un objeto en "items" por cada insumo distinto de la factura.` },
+      ]);
+      setOrigen(data.origen || origen);
+      if (data.fecha) setFecha(data.fecha);
+      if (Array.isArray(data.items) && data.items.length) setItems(data.items.map((it) => ({ nombre: it.nombre || "", litros: it.litros ?? "", precio: it.precio ?? "" })));
+    } catch (e) { setError("No se pudo leer la factura automáticamente. Completá los ítems a mano."); }
+    finally { setExtrayendo(false); }
+  };
+
+  const guardar = async () => {
+    const validos = items.filter((it) => it.nombre && it.litros && it.precio);
+    if (!fecha || !origen || !validos.length) { alert("Completá fecha, origen y al menos un insumo con nombre, litros y precio."); return; }
+    let facturaUrl = null, facturaNombre = null;
+    if (archivo) {
+      setSubiendo(true);
+      try {
+        const path = `insumos/${Date.now()}_${archivo.name}`;
+        const r = ref(storage, path);
+        await uploadBytes(r, archivo);
+        facturaUrl = await getDownloadURL(r);
+        facturaNombre = archivo.name;
+      } catch (e) { alert("No se pudo subir la factura adjunta, pero se guardará la compra sin el archivo."); }
+      setSubiendo(false);
+    }
+    await Promise.all(validos.map((it) => api.add({
+      fecha, origen, nombre: it.nombre, litros: Number(it.litros), precio: Number(it.precio),
+      facturaUrl, facturaNombre, usuario: user.email,
+    })));
+    setFecha(""); setOrigen(""); setItems([emptyItemInsumo()]); setArchivo(null); setPreview(null); setImgB64(null);
+  };
+
+  const eliminar = (id) => { if (confirm("¿Eliminar esta compra? Esto también reduce el stock disponible registrado.")) api.remove(id); };
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <div className="cc-h" style={{ fontSize: 20, fontWeight: 600 }}>Insumos</div>
+        <div style={{ fontSize: 12.5, color: "#8A8570" }}>Registrá las compras de insumos. El stock se descuenta solo cuando lo consumís desde "Gastos" en cada cultivo.</div>
+      </div>
+
+      <div className="cc-card p-4 space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <label className="cc-btn cc-btn-ghost" style={{ cursor: "pointer" }}>
+            <Paperclip size={14} /> {archivo ? archivo.name : "Adjuntar factura (imagen o PDF)"}
+            <input type="file" accept="image/*,.pdf" capture="environment" onChange={onFile} style={{ display: "none" }} />
+          </label>
+          {imgB64 && <button className="cc-btn cc-btn-ghost" onClick={extraer} disabled={extrayendo}>{extrayendo ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />} Extraer datos con IA</button>}
+        </div>
+        {preview && <img src={preview} alt="Factura" style={{ maxWidth: 140, borderRadius: 8, border: "1px solid var(--line)" }} />}
+        {error && <div style={{ color: "var(--rust)", fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}><AlertCircle size={14} />{error}</div>}
+
+        <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))" }}>
+          <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} /></div>
+          <div>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Origen (proveedor)</label>
+            <input className="cc-input" list="origenes-insumos" value={origen} onChange={(e) => setOrigen(e.target.value)} placeholder="Agromotora, Barraca..." />
+            <datalist id="origenes-insumos">{origenesSugeridos.map((o) => <option key={o} value={o} />)}</datalist>
+          </div>
+        </div>
+
+        <div>
+          <div style={{ fontSize: 12, color: "#8A8570", marginBottom: 4 }}>Insumos de esta factura</div>
+          <div className="space-y-2">
+            {items.map((it, i) => (
+              <div key={i} className="flex gap-2 items-end flex-wrap">
+                <div style={{ flex: 2, minWidth: 160 }}>
+                  <input className="cc-input" list="nombres-insumos" placeholder="Nombre (ej: Glifosato)" value={it.nombre} onChange={(e) => setItem(i, { ...it, nombre: e.target.value })} />
+                </div>
+                <div style={{ width: 130 }}><input className="cc-input" type="number" placeholder="Litros totales" value={it.litros} onChange={(e) => setItem(i, { ...it, litros: e.target.value })} /></div>
+                <div style={{ width: 130 }}><input className="cc-input" type="number" placeholder="Precio total U$S" value={it.precio} onChange={(e) => setItem(i, { ...it, precio: e.target.value })} /></div>
+                {items.length > 1 && <button onClick={() => quitarItem(i)}><X size={16} color="var(--rust)" /></button>}
+              </div>
+            ))}
+            <datalist id="nombres-insumos">{nombresSugeridos.map((n) => <option key={n} value={n} />)}</datalist>
+          </div>
+          <button className="cc-btn cc-btn-ghost mt-2" onClick={agregarItem}><Plus size={14} /> Agregar otro insumo a esta factura</button>
+        </div>
+
+        <button className="cc-btn cc-btn-primary" onClick={guardar} disabled={subiendo}>{subiendo ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Guardar compra</button>
+      </div>
+
+      <div>
+        <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Stock actual</div>
+        {stockInsumos.length === 0 ? <EmptyState icon={Boxes} title="Sin insumos cargados" text="Cuando registres una compra, el stock disponible va a aparecer acá." /> : (
+          <div className="cc-card overflow-hidden">
+            <table className="w-full" style={{ fontSize: 13 }}>
+              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Comprado</th><th className="px-3 py-2 text-right">Consumido</th><th className="px-3 py-2 text-right">Disponible</th><th className="px-3 py-2 text-right">Costo prom. / L</th></tr></thead>
+              <tbody>
+                {stockInsumos.sort((a, b) => a.nombre.localeCompare(b.nombre)).map((i) => (
+                  <tr key={i.nombre} style={{ borderTop: "1px solid var(--line)" }}>
+                    <td className="px-3 py-2">{i.nombre}</td>
+                    <td className="px-3 py-2 text-right cc-mono">{fmt(i.litrosComprados, 1)} L</td>
+                    <td className="px-3 py-2 text-right cc-mono">{fmt(i.litrosConsumidos, 1)} L</td>
+                    <td className="px-3 py-2 text-right cc-mono" style={{ color: i.disponible < 0 ? "var(--rust)" : "var(--soil-light)", fontWeight: 700 }}>{fmt(i.disponible, 1)} L</td>
+                    <td className="px-3 py-2 text-right cc-mono">{fmtUSD(i.costoPromedioPorLitro)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <div>
+        <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Historial de compras</div>
+        {compras.length === 0 ? <EmptyState icon={Receipt} title="Sin compras registradas" text="Registrá tu primera compra de insumos arriba." /> : (
+          <div className="cc-card overflow-hidden">
+            <table className="w-full" style={{ fontSize: 12.5 }}>
+              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Litros</th><th className="px-3 py-2 text-right">Precio</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
+              <tbody>
+                {[...compras].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((c) => (
+                  <tr key={c.id} style={{ borderTop: "1px solid var(--line)" }}>
+                    <td className="px-3 py-2 cc-mono">{c.fecha}</td>
+                    <td className="px-3 py-2">{c.origen}</td>
+                    <td className="px-3 py-2">{c.nombre}</td>
+                    <td className="px-3 py-2 text-right cc-mono">{fmt(c.litros, 1)} L</td>
+                    <td className="px-3 py-2 text-right cc-mono">{fmtUSD(c.precio)}</td>
+                    <td className="px-3 py-2">{c.facturaUrl && <a href={c.facturaUrl} target="_blank" rel="noreferrer"><FileText size={14} color="var(--frost)" /></a>}</td>
+                    <td className="px-3 py-2 text-right"><button onClick={() => eliminar(c.id)}><Trash2 size={13} color="var(--rust)" /></button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
