@@ -5,13 +5,13 @@ import {
   signOut, sendPasswordResetEmail,
 } from "firebase/auth";
 import {
-  collection, onSnapshot, addDoc, deleteDoc, doc, query, where,
+  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, where,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import {
   Sprout, Snowflake, Sun, Wheat, Receipt, Mic, Camera, MapPin, TrendingUp,
   TrendingDown, Plus, Trash2, Loader2, LogOut, ChevronRight, ChevronLeft,
-  Truck, DollarSign, FileText, AlertCircle, CheckCircle2, Paperclip,
+  Truck, DollarSign, FileText, AlertCircle, CheckCircle2, Paperclip, Pencil, X,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -365,7 +365,7 @@ function CultivoDetail({ cultivo, lotes, user }) {
     return () => { u1(); u2(); u3(); };
   }, [cultivo.id]);
 
-  const gastosApi = { add: (d) => addDoc(collection(db, "gastos"), d), remove: (id) => deleteDoc(doc(db, "gastos", id)) };
+  const gastosApi = { add: (d) => addDoc(collection(db, "gastos"), d), update: (id, d) => updateDoc(doc(db, "gastos", id), d), remove: (id) => deleteDoc(doc(db, "gastos", id)) };
   const ventasApi = { add: (d) => addDoc(collection(db, "ventas"), d), remove: (id) => deleteDoc(doc(db, "ventas", id)) };
   const remitosApi = { add: (d) => addDoc(collection(db, "remitos"), d), remove: (id) => deleteDoc(doc(db, "remitos", id)) };
 
@@ -449,6 +449,7 @@ const emptyGasto = (email) => ({ origen: "", monto: "", detalle: "", fecha: "", 
 
 function GastosTab({ cultivo, gastos, api, user }) {
   const [form, setForm] = useState(emptyGasto(user.email));
+  const [editId, setEditId] = useState(null);
   const [archivo, setArchivo] = useState(null);
   const [preview, setPreview] = useState(null);
   const [subiendo, setSubiendo] = useState(false);
@@ -459,6 +460,18 @@ function GastosTab({ cultivo, gastos, api, user }) {
   const [error, setError] = useState("");
   const recRef = useRef(null);
   const set = (k, v) => setForm({ ...form, [k]: v });
+
+  const origenesSugeridos = Array.from(new Set(gastos.map((g) => g.origen).filter(Boolean)));
+
+  const editar = (g) => {
+    setEditId(g.id);
+    setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email });
+    setArchivo(null); setPreview(null); setTranscripcion(""); setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const cancelarEdicion = () => {
+    setEditId(null); setForm(emptyGasto(user.email)); setArchivo(null); setPreview(null); setTranscripcion("");
+  };
 
   const onFile = (e) => {
     const f = e.target.files[0];
@@ -502,7 +515,7 @@ function GastosTab({ cultivo, gastos, api, user }) {
 
   const guardar = async () => {
     if (!form.origen || !form.monto || !form.fecha) { alert("Completá al menos origen, monto y fecha."); return; }
-    let facturaUrl = null, facturaNombre = null;
+    let facturaUrl, facturaNombre;
     if (archivo) {
       setSubiendo(true);
       try {
@@ -514,8 +527,15 @@ function GastosTab({ cultivo, gastos, api, user }) {
       } catch (e) { alert("No se pudo subir la factura adjunta, pero se guardará el gasto sin el archivo."); }
       setSubiendo(false);
     }
-    await api.add({ cultivoId: cultivo.id, origen: form.origen, monto: Number(form.monto), detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email, facturaUrl, facturaNombre });
-    setForm(emptyGasto(user.email)); setArchivo(null); setPreview(null); setTranscripcion("");
+    const datos = { origen: form.origen, monto: Number(form.monto), detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email };
+    if (archivo) { datos.facturaUrl = facturaUrl; datos.facturaNombre = facturaNombre; }
+
+    if (editId) {
+      await api.update(editId, datos);
+    } else {
+      await api.add({ cultivoId: cultivo.id, ...datos, facturaUrl: facturaUrl || null, facturaNombre: facturaNombre || null });
+    }
+    setEditId(null); setForm(emptyGasto(user.email)); setArchivo(null); setPreview(null); setTranscripcion("");
   };
 
   const eliminar = (id) => { if (confirm("¿Eliminar este gasto?")) api.remove(id); };
@@ -540,34 +560,51 @@ function GastosTab({ cultivo, gastos, api, user }) {
 
         {error && <div style={{ color: "var(--rust)", fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}><AlertCircle size={14} />{error}</div>}
 
+        {editId && (
+          <div className="flex items-center gap-2" style={{ background: "#FDF3E0", border: "1px solid var(--gold)", borderRadius: 8, padding: "6px 10px", fontSize: 12.5, color: "#7A5A1E" }}>
+            <Pencil size={13} /> Editando un gasto ya guardado.
+          </div>
+        )}
+
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))" }}>
-          <div><label style={{ fontSize: 12, color: "#8A8570" }}>Origen</label><input className="cc-input" value={form.origen} onChange={(e) => set("origen", e.target.value)} placeholder="Proveedor, gasoil, renta..." /></div>
+          <div>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Origen</label>
+            <input className="cc-input" list="origenes-gastos" value={form.origen} onChange={(e) => set("origen", e.target.value)} placeholder="Proveedor, gasoil, renta..." />
+            <datalist id="origenes-gastos">{origenesSugeridos.map((o) => <option key={o} value={o} />)}</datalist>
+          </div>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Monto (U$S)</label><input className="cc-input" type="number" value={form.monto} onChange={(e) => set("monto", e.target.value)} /></div>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Usuario</label><input className="cc-input" value={form.usuario} disabled /></div>
           <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 12, color: "#8A8570" }}>Detalle</label><input className="cc-input" value={form.detalle} onChange={(e) => set("detalle", e.target.value)} placeholder="Descripción del gasto" /></div>
         </div>
-        <button className="cc-btn cc-btn-primary" onClick={guardar} disabled={subiendo}>{subiendo ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Guardar gasto</button>
+        {editId && archivo === null && <div style={{ fontSize: 12, color: "#8A8570" }}>La factura adjunta actual se mantiene salvo que subas una nueva arriba.</div>}
+        <div className="flex gap-2">
+          <button className="cc-btn cc-btn-primary" onClick={guardar} disabled={subiendo}>
+            {subiendo ? <Loader2 size={15} className="animate-spin" /> : editId ? <Pencil size={15} /> : <Plus size={15} />} {editId ? "Guardar cambios" : "Guardar gasto"}
+          </button>
+          {editId && <button className="cc-btn cc-btn-ghost" onClick={cancelarEdicion}><X size={15} /> Cancelar</button>}
+        </div>
       </div>
 
       {gastos.length === 0 ? <EmptyState icon={Receipt} title="Sin gastos cargados" text="Cargá el primer gasto de este cultivo, escrito, por voz o desde una foto de factura." /> : (
         <div className="cc-card overflow-hidden">
           <table className="w-full" style={{ fontSize: 13 }}>
-            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Detalle</th><th className="px-3 py-2">Usuario</th><th className="px-3 py-2 text-right">Monto</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
+            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Detalle</th><th className="px-3 py-2">Usuario</th><th className="px-3 py-2 text-right">Monto</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
             <tbody>
               {[...gastos].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((g) => (
-                <tr key={g.id} style={{ borderTop: "1px solid var(--line)" }}>
+                <tr key={g.id} style={{ borderTop: "1px solid var(--line)", background: editId === g.id ? "#FDF3E0" : "transparent" }}>
                   <td className="px-3 py-2 cc-mono">{g.fecha}</td>
                   <td className="px-3 py-2">{g.origen}</td>
                   <td className="px-3 py-2" style={{ color: "#5A5647" }}>{g.detalle}</td>
                   <td className="px-3 py-2" style={{ color: "#8A8570", fontSize: 12 }}>{g.usuario}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmtUSD(g.monto)}</td>
                   <td className="px-3 py-2">{g.facturaUrl && <a href={g.facturaUrl} target="_blank" rel="noreferrer"><FileText size={14} color="var(--frost)" /></a>}</td>
+                  <td className="px-3 py-2 text-right"><button onClick={() => editar(g)}><Pencil size={13} color="var(--frost)" /></button></td>
                   <td className="px-3 py-2 text-right"><button onClick={() => eliminar(g.id)}><Trash2 size={13} color="var(--rust)" /></button></td>
                 </tr>
               ))}
             </tbody>
-            <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}><td className="px-3 py-2" colSpan={4}>Total</td><td className="px-3 py-2 text-right cc-mono">{fmtUSD(gastos.reduce((s, g) => s + Number(g.monto || 0), 0))}</td><td colSpan={2}></td></tr></tfoot>
+            <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}><td className="px-3 py-2" colSpan={4}>Total</td><td className="px-3 py-2 text-right cc-mono">{fmtUSD(gastos.reduce((s, g) => s + Number(g.monto || 0), 0))}</td><td colSpan={3}></td></tr></tfoot>
           </table>
         </div>
       )}
@@ -581,6 +618,7 @@ function GastosTab({ cultivo, gastos, api, user }) {
 function VentasTab({ cultivo, ventas, api }) {
   const [form, setForm] = useState({ fecha: "", origen: "", toneladas: "", dolaresPorTonelada: "" });
   const set = (k, v) => setForm({ ...form, [k]: v });
+  const origenesSugeridos = Array.from(new Set(ventas.map((v) => v.origen).filter(Boolean)));
 
   const guardar = () => {
     if (!form.fecha || !form.toneladas || !form.dolaresPorTonelada) { alert("Completá fecha, toneladas y U$S/ton."); return; }
@@ -596,7 +634,11 @@ function VentasTab({ cultivo, ventas, api }) {
       <div className="cc-card p-4 space-y-3">
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))" }}>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
-          <div><label style={{ fontSize: 12, color: "#8A8570" }}>Origen</label><input className="cc-input" value={form.origen} onChange={(e) => set("origen", e.target.value)} placeholder="Exportadora / acopiador" /></div>
+          <div>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Origen</label>
+            <input className="cc-input" list="origenes-ventas" value={form.origen} onChange={(e) => set("origen", e.target.value)} placeholder="Exportadora / acopiador" />
+            <datalist id="origenes-ventas">{origenesSugeridos.map((o) => <option key={o} value={o} />)}</datalist>
+          </div>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Toneladas</label><input className="cc-input" type="number" value={form.toneladas} onChange={(e) => set("toneladas", e.target.value)} /></div>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>U$S / tonelada</label><input className="cc-input" type="number" value={form.dolaresPorTonelada} onChange={(e) => set("dolaresPorTonelada", e.target.value)} /></div>
         </div>
@@ -721,3 +763,4 @@ function LotesView({ lotes, api }) {
     </div>
   );
 }
+
