@@ -28,6 +28,38 @@ const fmt = (n, decimals = 0) => {
 const fmtUSD = (n) => `U$S ${fmt(n, 0)}`;
 const uid = () => Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
 
+// Calcula el costo de consumir `litrosNuevos` de un insumo, tomando primero de las
+// compras más antiguas que todavía tengan saldo (FIFO), salteando lo ya consumido
+// por otros gastos anteriores (`litrosYaConsumidos`).
+function costoFIFO(comprasDelInsumo, litrosYaConsumidos, litrosNuevos) {
+  const ordenadas = [...comprasDelInsumo].sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "") || String(a.id).localeCompare(String(b.id)));
+  let restanteYaConsumido = litrosYaConsumidos;
+  let restanteNuevo = litrosNuevos;
+  let costoTotal = 0;
+  let litrosAsignados = 0;
+  for (const c of ordenadas) {
+    let disponibleAqui = Number(c.litros || 0);
+    if (restanteYaConsumido > 0) {
+      const salteado = Math.min(disponibleAqui, restanteYaConsumido);
+      disponibleAqui -= salteado;
+      restanteYaConsumido -= salteado;
+    }
+    if (disponibleAqui <= 0 || restanteNuevo <= 0) continue;
+    const tomar = Math.min(disponibleAqui, restanteNuevo);
+    const precioPorLitro = c.litros ? Number(c.precio || 0) / Number(c.litros) : 0;
+    costoTotal += tomar * precioPorLitro;
+    litrosAsignados += tomar;
+    restanteNuevo -= tomar;
+  }
+  if (restanteNuevo > 0 && ordenadas.length) {
+    const ultima = ordenadas[ordenadas.length - 1];
+    const precioPorLitro = ultima.litros ? Number(ultima.precio || 0) / Number(ultima.litros) : 0;
+    costoTotal += restanteNuevo * precioPorLitro;
+    litrosAsignados += restanteNuevo;
+  }
+  return { costoTotal, costoPromedioEfectivo: litrosAsignados ? costoTotal / litrosAsignados : 0 };
+}
+
 /* ------------------------------------------------------------------ */
 /*  Claude API (voz e imagen de factura)                               */
 /* ------------------------------------------------------------------ */
@@ -234,7 +266,7 @@ export default function App() {
             onOpen={(id) => setNav({ view: "cultivo", campaniaId: campaniaActual.id, cultivoId: id })} />
         )}
 
-        {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} user={user} stockInsumos={stockInsumos} />}
+        {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} />}
 
         {nav.view === "lotes" && <LotesView lotes={lotes} api={lotesApi} />}
 
@@ -381,7 +413,7 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
 /* ------------------------------------------------------------------ */
 /*  Detalle de un cultivo: Resumen / Gastos / Ventas / Remitos          */
 /* ------------------------------------------------------------------ */
-function CultivoDetail({ cultivo, lotes, user, stockInsumos }) {
+function CultivoDetail({ cultivo, lotes, user, stockInsumos, insumosCompras, gastosTodos }) {
   const [tab, setTab] = useState("resumen");
   const [gastos, setGastos] = useState([]);
   const [ventas, setVentas] = useState([]);
@@ -455,7 +487,7 @@ function CultivoDetail({ cultivo, lotes, user, stockInsumos }) {
         </div>
       )}
 
-      {tab === "gastos" && <GastosTab cultivo={cultivo} gastos={gastos} api={gastosApi} user={user} stockInsumos={stockInsumos} />}
+      {tab === "gastos" && <GastosTab cultivo={cultivo} gastos={gastos} api={gastosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} />}
       {tab === "ventas" && <VentasTab cultivo={cultivo} ventas={ventas} api={ventasApi} />}
       {tab === "remitos" && <RemitosTab cultivo={cultivo} remitos={remitos} api={remitosApi} lotes={lotes} totalToneladasVentas={totalToneladasVentas} />}
     </div>
@@ -479,7 +511,7 @@ function MiniStat({ label, value }) {
 /* ------------------------------------------------------------------ */
 const emptyGasto = (email) => ({ origen: "", monto: "", detalle: "", fecha: "", usuario: email });
 
-function GastosTab({ cultivo, gastos, api, user, stockInsumos }) {
+function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, gastosTodos }) {
   const [form, setForm] = useState(emptyGasto(user.email));
   const [editId, setEditId] = useState(null);
   const [tipo, setTipo] = useState("general"); // "general" | "insumo"
@@ -498,7 +530,12 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos }) {
 
   const origenesSugeridos = Array.from(new Set(gastos.map((g) => g.origen).filter(Boolean)));
   const insumoElegido = stockInsumos.find((i) => i.nombre === insumoSel);
-  const montoCalculado = insumoElegido ? Number(litrosUsados || 0) * insumoElegido.costoPromedioPorLitro : 0;
+  const comprasDeEsteInsumo = insumosCompras.filter((c) => c.nombre === insumoSel);
+  const litrosYaConsumidosPorOtros = gastosTodos
+    .filter((g) => g.insumoNombre === insumoSel && g.id !== editId)
+    .reduce((s, g) => s + Number(g.litrosUsados || 0), 0);
+  const fifo = insumoSel ? costoFIFO(comprasDeEsteInsumo, litrosYaConsumidosPorOtros, Number(litrosUsados || 0)) : { costoTotal: 0, costoPromedioEfectivo: 0 };
+  const montoCalculado = fifo.costoTotal;
 
   const editar = (g) => {
     setEditId(g.id);
@@ -582,7 +619,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos }) {
     if (tipo === "insumo") {
       datos = {
         origen: form.origen || insumoSel, monto: montoCalculado, detalle: form.detalle || `Consumo de ${insumoSel} — ${litrosUsados} L`,
-        fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: insumoSel, litrosUsados: Number(litrosUsados), costoPorLitro: insumoElegido?.costoPromedioPorLitro || 0,
+        fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: insumoSel, litrosUsados: Number(litrosUsados), costoPorLitro: fifo.costoPromedioEfectivo,
       };
     } else {
       datos = { origen: form.origen, monto: Number(form.monto), detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: null, litrosUsados: null };
@@ -643,7 +680,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos }) {
             </div>
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Litros usados</label><input className="cc-input" type="number" value={litrosUsados} onChange={(e) => setLitrosUsados(e.target.value)} /></div>
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
-            <div><label style={{ fontSize: 12, color: "#8A8570" }}>Costo estimado</label><input className="cc-input" value={fmtUSD(montoCalculado)} disabled /></div>
+            <div><label style={{ fontSize: 12, color: "#8A8570" }}>Costo estimado (FIFO)</label><input className="cc-input" value={`U$S ${fmt(montoCalculado, 2)}`} disabled /></div>
             <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 12, color: "#8A8570" }}>Detalle (opcional)</label><input className="cc-input" value={form.detalle} onChange={(e) => set("detalle", e.target.value)} placeholder={insumoSel ? `Consumo de ${insumoSel}` : ""} /></div>
           </div>
         ) : (
