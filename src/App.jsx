@@ -303,7 +303,7 @@ export default function App() {
             onOpen={(id) => setNav({ view: "cultivo", campaniaId: campaniaActual.id, cultivoId: id })} />
         )}
 
-        {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} />}
+        {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} />}
 
         {nav.view === "lotes" && <LotesView lotes={lotes} api={lotesApi} />}
 
@@ -469,7 +469,7 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
 /* ------------------------------------------------------------------ */
 /*  Detalle de un cultivo: Resumen / Gastos / Ventas / Remitos          */
 /* ------------------------------------------------------------------ */
-function CultivoDetail({ cultivo, lotes, user, stockInsumos, insumosCompras, gastosTodos }) {
+function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsumos, insumosCompras, gastosTodos }) {
   const [tab, setTab] = useState("resumen");
   const [gastos, setGastos] = useState([]);
   const [ventas, setVentas] = useState([]);
@@ -505,8 +505,17 @@ function CultivoDetail({ cultivo, lotes, user, stockInsumos, insumosCompras, gas
   const totalKgSL = remitos.reduce((s, r) => s + Number(r.kgSL || 0), 0);
   const totalTonRemitos = totalKgSL / 1000;
 
+  const loteIds = cultivo.loteIds || [];
+  const superficie = lotes.filter((l) => loteIds.includes(l.id)).reduce((s, l) => s + Number(l.hectareas || 0), 0);
+  const costoPorHa = superficie ? totalGastos / superficie : null;
+  const ingresoPorHa = superficie ? totalIngresos / superficie : null;
+  const balancePorHa = costoPorHa !== null && ingresoPorHa !== null ? ingresoPorHa - costoPorHa : null;
+  const precioPromedioVenta = totalToneladasVentas ? totalIngresos / totalToneladasVentas : null;
+  const rindeEquilibrio = costoPorHa !== null && precioPromedioVenta ? costoPorHa / precioPromedioVenta : null;
+
   const TABS = [
     { id: "resumen", label: "Resumen", icon: TrendingUp },
+    { id: "lotes", label: "Lotes", icon: MapPin },
     { id: "gastos", label: "Gastos", icon: Receipt },
     { id: "ventas", label: "Ingresos · Ventas", icon: DollarSign },
     { id: "remitos", label: "Ingresos · Remitos", icon: Truck },
@@ -528,10 +537,30 @@ function CultivoDetail({ cultivo, lotes, user, stockInsumos, insumosCompras, gas
       {tab === "resumen" && (
         <div className="space-y-4">
           <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))" }}>
+            <StatCard label="Superficie" value={`${fmt(superficie, 1)} ha`} icon={MapPin} color="var(--frost)" />
             <StatCard label="Total gastos" value={fmtUSD(totalGastos)} icon={Receipt} color="var(--rust)" />
             <StatCard label="Total ingresos (ventas)" value={fmtUSD(totalIngresos)} icon={DollarSign} color="var(--soil-light)" />
             <StatCard label="Margen" value={fmtUSD(totalIngresos - totalGastos)} icon={totalIngresos - totalGastos >= 0 ? TrendingUp : TrendingDown} color={totalIngresos - totalGastos >= 0 ? "var(--soil-light)" : "var(--rust)"} />
           </div>
+
+          {!superficie ? (
+            <div className="flex items-start gap-2" style={{ background: "#FDF3E0", border: "1px solid var(--gold)", borderRadius: 8, padding: "10px 12px" }}>
+              <AlertCircle size={16} color="#7A5A1E" style={{ marginTop: 1, flexShrink: 0 }} />
+              <div style={{ fontSize: 13, color: "#7A5A1E" }}>Todavía no asociaste lotes a este cultivo — andá a la pestaña "Lotes" para cargar la superficie y ver los indicadores por hectárea.</div>
+            </div>
+          ) : (
+            <div className="cc-card p-4">
+              <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Indicadores por hectárea</div>
+              <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))" }}>
+                <MiniStat label="Gasto / ha" value={fmtUSD(costoPorHa)} />
+                <MiniStat label="Ingreso / ha" value={fmtUSD(ingresoPorHa)} />
+                <MiniStat label="Balance / ha" value={fmtUSD(balancePorHa)} />
+                <MiniStat label="Precio prom. venta" value={precioPromedioVenta ? fmtUSD(precioPromedioVenta) + "/tn" : "-"} />
+                <MiniStat label="Rinde de equilibrio" value={rindeEquilibrio !== null ? `${fmt(rindeEquilibrio, 2)} tn/ha` : "-"} />
+              </div>
+              {rindeEquilibrio === null && <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 6 }}>Cargá al menos una venta para calcular el rinde de equilibrio.</div>}
+            </div>
+          )}
 
           <div className="cc-card p-4">
             <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Gastos por tipo</div>
@@ -586,12 +615,78 @@ function CultivoDetail({ cultivo, lotes, user, stockInsumos, insumosCompras, gas
         </div>
       )}
 
-      {tab === "gastos" && <GastosTab cultivo={cultivo} gastos={gastos} api={gastosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} />}
+      {tab === "lotes" && <CultivoLotesTab cultivo={cultivo} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} superficie={superficie} />}
+
+      {tab === "gastos" && <GastosTab cultivo={cultivo} gastos={gastos} api={gastosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} superficie={superficie} />}
       {tab === "ventas" && <VentasTab cultivo={cultivo} ventas={ventas} api={ventasApi} />}
       {tab === "remitos" && <RemitosTab cultivo={cultivo} remitos={remitos} api={remitosApi} lotes={lotes} totalToneladasVentas={totalToneladasVentas} />}
     </div>
   );
 }
+
+/* ------------------------------------------------------------------ */
+/*  Lotes asociados a un cultivo                                        */
+/* ------------------------------------------------------------------ */
+function CultivoLotesTab({ cultivo, lotes, lotesApi, cultivosApi, superficie }) {
+  const [nombre, setNombre] = useState("");
+  const [hectareas, setHectareas] = useState("");
+  const loteIds = cultivo.loteIds || [];
+
+  const toggle = async (loteId) => {
+    const nuevos = loteIds.includes(loteId) ? loteIds.filter((id) => id !== loteId) : [...loteIds, loteId];
+    await cultivosApi.update(cultivo.id, { loteIds: nuevos });
+  };
+
+  const agregarNuevoLote = async () => {
+    if (!nombre.trim() || !hectareas) { alert("Completá nombre y hectáreas del lote."); return; }
+    const ref = await lotesApi.add({ nombre: nombre.trim(), hectareas: Number(hectareas) });
+    await cultivosApi.update(cultivo.id, { loteIds: [...loteIds, ref.id] });
+    setNombre(""); setHectareas("");
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="cc-card p-4">
+        <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Agregar un lote nuevo y sumarlo a este cultivo</div>
+        <div className="flex gap-3 flex-wrap items-end">
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Nombre del lote</label>
+            <input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Lote 4 - La Loma" />
+          </div>
+          <div style={{ width: 150 }}>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Hectáreas</label>
+            <input className="cc-input" type="number" value={hectareas} onChange={(e) => setHectareas(e.target.value)} placeholder="93" />
+          </div>
+          <button className="cc-btn cc-btn-primary" onClick={agregarNuevoLote}><Plus size={17} /> Agregar y sumar</button>
+        </div>
+      </div>
+
+      <div className="cc-card p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="cc-h" style={{ fontSize: 15, fontWeight: 600 }}>Lotes de este cultivo</div>
+          <div className="cc-mono" style={{ fontSize: 15, fontWeight: 700, color: "var(--frost)" }}>{fmt(superficie, 1)} ha totales</div>
+        </div>
+        {lotes.length === 0 ? (
+          <div style={{ fontSize: 13, color: "#8A8570" }}>Todavía no hay lotes cargados. Agregá uno arriba.</div>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {lotes.map((l) => {
+              const sel = loteIds.includes(l.id);
+              return (
+                <button key={l.id} onClick={() => toggle(l.id)} className="cc-btn"
+                  style={{ padding: "8px 12px", fontSize: 13, background: sel ? "var(--soil)" : "#fff", color: sel ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>
+                  {sel ? <CheckCircle2 size={16} /> : <MapPin size={16} />} {l.nombre} ({fmt(l.hectareas, 1)} ha)
+                </button>
+              );
+            })}
+          </div>
+        )}
+        <div style={{ fontSize: 12, color: "#8A8570", marginTop: 10 }}>Tocá un lote para sumarlo o sacarlo de este cultivo. Un mismo lote puede pertenecer a distintos cultivos si corresponde (por ejemplo, cambió de campaña).</div>
+      </div>
+    </div>
+  );
+}
+
 
 function StatCard({ label, value, icon: Icon, color }) {
   return (
@@ -610,7 +705,7 @@ function MiniStat({ label, value }) {
 /* ------------------------------------------------------------------ */
 const emptyGasto = (email) => ({ origen: "", monto: "", detalle: "", fecha: "", usuario: email, categoriaGasto: "Servicio" });
 
-function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, gastosTodos }) {
+function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, gastosTodos, superficie }) {
   const [form, setForm] = useState(emptyGasto(user.email));
   const [editId, setEditId] = useState(null);
   const [tipo, setTipo] = useState("general"); // "general" | "insumo"
@@ -756,6 +851,12 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
 
   return (
     <div className="space-y-5">
+      <div className="flex items-center gap-2" style={{ fontSize: 13, color: "#5A5647" }}>
+        <MapPin size={16} color="var(--frost)" />
+        Superficie de este cultivo: <b className="cc-mono">{fmt(superficie, 1)} ha</b>
+        {!superficie && <span style={{ color: "#8A8570" }}>— asociá lotes en la pestaña "Lotes" para calcular costo/ha.</span>}
+      </div>
+
       <div className="cc-card p-4 space-y-4">
         <div className="flex flex-wrap gap-2">
           <label className="cc-btn cc-btn-ghost" style={{ cursor: "pointer" }}><Paperclip size={17} /> {archivo ? archivo.name : "Adjuntar factura (imagen o PDF)"}<input type="file" accept="image/*,.pdf" capture="environment" onChange={onFile} style={{ display: "none" }} /></label>
@@ -1383,4 +1484,3 @@ function PapeleraView({ grupos }) {
     </div>
   );
 }
-
