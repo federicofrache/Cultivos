@@ -11,7 +11,7 @@ import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import {
   Sprout, Snowflake, Sun, Wheat, Receipt, Mic, Camera, MapPin, TrendingUp,
   TrendingDown, Plus, Trash2, Loader2, LogOut, ChevronRight, ChevronLeft,
-  Truck, DollarSign, FileText, AlertCircle, CheckCircle2, Paperclip, Pencil, X, Package, Boxes,
+  Truck, DollarSign, FileText, AlertCircle, CheckCircle2, Paperclip, Pencil, X, Package, Boxes, Copy, Search,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -143,7 +143,7 @@ function Login() {
     <div style={{ background: "var(--bg)", minHeight: "100vh" }} className="flex items-center justify-center">
       <style>{GLOBAL_STYLES}</style>
       <form onSubmit={submit} className="cc-card p-6" style={{ width: 340 }}>
-        <div className="flex items-center gap-2 justify-center mb-1"><Wheat color="var(--gold)" size={24} /></div>
+        <div className="flex items-center gap-2 justify-center mb-1"><Wheat color="var(--gold)" size={26} /></div>
         <div className="cc-h text-center" style={{ fontSize: 20, fontWeight: 600 }}>Campo & Costo</div>
         <div className="text-center mb-5" style={{ fontSize: 12, color: "#8A8570" }}>Campañas · Cultivos · Gastos e Ingresos</div>
         <label style={{ fontSize: 12, color: "#8A8570" }}>Email</label>
@@ -152,7 +152,7 @@ function Login() {
         <input className="cc-input mb-3" type="password" required minLength={6} value={pass} onChange={(e) => setPass(e.target.value)} />
         {error && <div style={{ fontSize: 12.5, color: "var(--rust)", marginBottom: 10 }}>{error}</div>}
         <button className="cc-btn cc-btn-primary w-full justify-center" disabled={cargando} type="submit">
-          {cargando ? <Loader2 size={15} className="animate-spin" /> : null}{modo === "ingresar" ? "Ingresar" : "Crear cuenta"}
+          {cargando ? <Loader2 size={18} className="animate-spin" /> : null}{modo === "ingresar" ? "Ingresar" : "Crear cuenta"}
         </button>
         <div className="flex justify-between mt-3" style={{ fontSize: 12 }}>
           <button type="button" onClick={() => setModo(modo === "ingresar" ? "crear" : "ingresar")} style={{ color: "var(--frost)" }}>
@@ -190,7 +190,7 @@ export default function App() {
   }, [user]);
 
   if (user === undefined) {
-    return <div style={{ background: "var(--bg)", minHeight: "100vh" }} className="flex items-center justify-center"><style>{GLOBAL_STYLES}</style><Loader2 className="animate-spin" color="var(--soil)" size={28} /></div>;
+    return <div style={{ background: "var(--bg)", minHeight: "100vh" }} className="flex items-center justify-center"><style>{GLOBAL_STYLES}</style><Loader2 className="animate-spin" color="var(--soil)" size={30} /></div>;
   }
   if (!user) return <Login />;
 
@@ -239,7 +239,7 @@ export default function App() {
       <header style={{ background: "var(--soil)" }} className="px-6 py-4">
         <div className="flex items-center justify-between max-w-6xl mx-auto">
           <button className="flex items-center gap-3" onClick={() => setNav({ view: "campanias", campaniaId: null, cultivoId: null })}>
-            <Wheat color="var(--gold)" size={26} />
+            <Wheat color="var(--gold)" size={28} />
             <div style={{ textAlign: "left" }}>
               <div className="cc-h" style={{ color: "#fff", fontSize: 20, fontWeight: 600, lineHeight: 1 }}>Campo & Costo</div>
               <div style={{ color: "#B8C2AC", fontSize: 12 }}>Campañas · Cultivos · Gastos e Ingresos</div>
@@ -247,13 +247,13 @@ export default function App() {
           </button>
           <div className="flex items-center gap-3">
             <button onClick={() => setNav({ view: "insumos", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
-              <Package size={13} /> Insumos
+              <Package size={16} /> Insumos
             </button>
             <button onClick={() => setNav({ view: "lotes", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
-              <MapPin size={13} /> Lotes
+              <MapPin size={16} /> Lotes
             </button>
             <span style={{ color: "#D8DECB", fontSize: 12.5 }}>{user.email}</span>
-            <button onClick={() => signOut(auth)} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}><LogOut size={13} /> Salir</button>
+            <button onClick={() => signOut(auth)} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}><LogOut size={16} /> Salir</button>
           </div>
         </div>
       </header>
@@ -285,7 +285,7 @@ function Breadcrumb({ nav, setNav, campania, cultivo }) {
       <button onClick={() => setNav({ view: "campanias", campaniaId: null, cultivoId: null })} style={{ color: "var(--frost)", fontWeight: 600 }}>Campañas</button>
       {campania && (
         <>
-          <ChevronRight size={13} />
+          <ChevronRight size={16} />
           <button onClick={() => setNav({ view: "cultivos", campaniaId: campania.id, cultivoId: null })} style={{ color: nav.view === "cultivos" ? "var(--ink)" : "var(--frost)", fontWeight: 600 }}>
             {campania.nombre || campania.anio}
           </button>
@@ -293,7 +293,7 @@ function Breadcrumb({ nav, setNav, campania, cultivo }) {
       )}
       {cultivo && (
         <>
-          <ChevronRight size={13} />
+          <ChevronRight size={16} />
           <span style={{ color: "var(--ink)", fontWeight: 600 }}>{cultivo.nombre}</span>
         </>
       )}
@@ -304,7 +304,7 @@ function Breadcrumb({ nav, setNav, campania, cultivo }) {
 function EmptyState({ icon: Icon, title, text }) {
   return (
     <div className="cc-card flex flex-col items-center text-center py-16 px-6">
-      <Icon size={30} color="var(--gold)" style={{ marginBottom: 10 }} />
+      <Icon size={32} color="var(--gold)" style={{ marginBottom: 10 }} />
       <div className="cc-h" style={{ fontSize: 17, fontWeight: 600 }}>{title}</div>
       <div style={{ color: "#8A8570", fontSize: 13, maxWidth: 380, marginTop: 4 }}>{text}</div>
     </div>
@@ -328,7 +328,7 @@ function CampaniasView({ campanias, api, cultivos, onOpen }) {
         <div className="flex gap-3 flex-wrap items-end">
           <div style={{ width: 140 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Año</label><input className="cc-input" type="number" value={anio} onChange={(e) => setAnio(e.target.value)} /></div>
           <div style={{ flex: 1, minWidth: 180 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Nombre (opcional)</label><input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={`Campaña ${anio}`} /></div>
-          <button className="cc-btn cc-btn-primary" onClick={crear}><Plus size={15} /> Crear</button>
+          <button className="cc-btn cc-btn-primary" onClick={crear}><Plus size={18} /> Crear</button>
         </div>
       </div>
 
@@ -345,9 +345,9 @@ function CampaniasView({ campanias, api, cultivos, onOpen }) {
                     <div className="cc-h" style={{ fontSize: 18, fontWeight: 600 }}>{c.nombre || c.anio}</div>
                     <div style={{ fontSize: 12, color: "#8A8570" }}>{nCultivos} cultivo{nCultivos !== 1 ? "s" : ""}</div>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); eliminar(c.id); }}><Trash2 size={14} color="var(--rust)" /></button>
+                  <button onClick={(e) => { e.stopPropagation(); eliminar(c.id); }}><Trash2 size={17} color="var(--rust)" /></button>
                 </div>
-                <div className="flex items-center gap-1 mt-3" style={{ color: "var(--frost)", fontSize: 12.5, fontWeight: 600 }}>Ver cultivos <ChevronRight size={13} /></div>
+                <div className="flex items-center gap-1 mt-3" style={{ color: "var(--frost)", fontSize: 12.5, fontWeight: 600 }}>Ver cultivos <ChevronRight size={16} /></div>
               </div>
             );
           })}
@@ -383,7 +383,7 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
             <label style={{ fontSize: 12, color: "#8A8570" }}>Cultivo</label>
             <select className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)}>{opciones.map((c) => <option key={c} value={c}>{c}</option>)}</select>
           </div>
-          <button className="cc-btn cc-btn-primary" onClick={crear}><Plus size={15} /> Agregar</button>
+          <button className="cc-btn cc-btn-primary" onClick={crear}><Plus size={18} /> Agregar</button>
         </div>
       </div>
 
@@ -399,11 +399,11 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
                   <span className="cc-chip" style={{ background: CAT_COLOR[c.categoria] + "22", color: CAT_COLOR[c.categoria] }}>{c.categoria === "verano" ? "Verano" : "Invierno"}</span>
                 </div>
                 <div className="flex items-center gap-2">
-                  {c.categoria === "verano" ? <Sun color="var(--gold)" size={18} /> : <Snowflake color="var(--frost)" size={18} />}
-                  <button onClick={(e) => { e.stopPropagation(); eliminar(c.id); }}><Trash2 size={13} color="var(--rust)" /></button>
+                  {c.categoria === "verano" ? <Sun color="var(--gold)" size={21} /> : <Snowflake color="var(--frost)" size={21} />}
+                  <button onClick={(e) => { e.stopPropagation(); eliminar(c.id); }}><Trash2 size={16} color="var(--rust)" /></button>
                 </div>
               </div>
-              <div className="flex items-center gap-1 mt-3" style={{ color: "var(--frost)", fontSize: 12.5, fontWeight: 600 }}>Gastos e ingresos <ChevronRight size={13} /></div>
+              <div className="flex items-center gap-1 mt-3" style={{ color: "var(--frost)", fontSize: 12.5, fontWeight: 600 }}>Gastos e ingresos <ChevronRight size={16} /></div>
             </div>
           ))}
         </div>
@@ -455,7 +455,7 @@ function CultivoDetail({ cultivo, lotes, user, stockInsumos, insumosCompras, gas
           const Icon = t.icon; const active = tab === t.id;
           return (
             <button key={t.id} onClick={() => setTab(t.id)} className="cc-sub" style={{ background: active ? "var(--panel)" : "transparent", color: active ? "var(--soil)" : "#8A8570", border: active ? "1px solid var(--line)" : "1px solid transparent", borderBottom: active ? "1px solid var(--panel)" : "none" }}>
-              <Icon size={14} /> {t.label}
+              <Icon size={17} /> {t.label}
             </button>
           );
         })}
@@ -478,9 +478,9 @@ function CultivoDetail({ cultivo, lotes, user, stockInsumos, insumosCompras, gas
             </div>
             <div className="flex items-center gap-2 mt-3" style={{ fontSize: 13 }}>
               {Math.abs(totalTonRemitos - totalToneladasVentas) < 0.05 && totalToneladasVentas > 0 ? (
-                <><CheckCircle2 size={15} color="var(--soil-light)" /><span style={{ color: "var(--soil-light)" }}>Los remitos coinciden con las toneladas vendidas.</span></>
+                <><CheckCircle2 size={18} color="var(--soil-light)" /><span style={{ color: "var(--soil-light)" }}>Los remitos coinciden con las toneladas vendidas.</span></>
               ) : (
-                <><AlertCircle size={15} color="var(--rust)" /><span style={{ color: "var(--rust)" }}>
+                <><AlertCircle size={18} color="var(--rust)" /><span style={{ color: "var(--rust)" }}>
                   Diferencia de {fmt(Math.abs(totalTonRemitos - totalToneladasVentas), 2)} tn entre remitos y ventas.
                 </span></>
               )}
@@ -499,7 +499,7 @@ function CultivoDetail({ cultivo, lotes, user, stockInsumos, insumosCompras, gas
 function StatCard({ label, value, icon: Icon, color }) {
   return (
     <div className="cc-card p-4 flex items-center gap-3">
-      <div style={{ background: color + "1A", borderRadius: 8, padding: 8 }}><Icon size={18} color={color} /></div>
+      <div style={{ background: color + "1A", borderRadius: 8, padding: 8 }}><Icon size={21} color={color} /></div>
       <div><div style={{ fontSize: 11, color: "#8A8570", textTransform: "uppercase", letterSpacing: ".03em" }}>{label}</div><div className="cc-mono" style={{ fontSize: 17, fontWeight: 600 }}>{value}</div></div>
     </div>
   );
@@ -529,6 +529,9 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
   const [error, setError] = useState("");
   const recRef = useRef(null);
   const set = (k, v) => setForm({ ...form, [k]: v });
+  const [busqueda, setBusqueda] = useState("");
+  const [mensaje, setMensaje] = useState("");
+  const avisar = (texto) => { setMensaje(texto); setTimeout(() => setMensaje(""), 2500); };
 
   const origenesSugeridos = Array.from(new Set(gastos.map((g) => g.origen).filter(Boolean)));
   const insumoElegido = stockInsumos.find((i) => i.nombre === insumoSel);
@@ -547,6 +550,18 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     } else {
       setTipo("general"); setInsumoSel(""); setLitrosUsados("");
       setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email });
+    }
+    setArchivo(null); setPreview(null); setTranscripcion(""); setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const duplicar = (g) => {
+    setEditId(null);
+    if (g.insumoNombre) {
+      setTipo("insumo"); setInsumoSel(g.insumoNombre); setLitrosUsados(String(g.litrosUsados ?? ""));
+      setForm({ origen: g.origen || "", monto: "", detalle: g.detalle || "", fecha: "", usuario: user.email });
+    } else {
+      setTipo("general"); setInsumoSel(""); setLitrosUsados("");
+      setForm({ origen: g.origen || "", monto: String(g.monto ?? ""), detalle: g.detalle || "", fecha: "", usuario: user.email });
     }
     setArchivo(null); setPreview(null); setTranscripcion(""); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -633,8 +648,10 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     } else {
       await api.add({ cultivoId: cultivo.id, ...datos, facturaUrl: facturaUrl || null, facturaNombre: facturaNombre || null });
     }
+    const eraEdicion = !!editId;
     setEditId(null); setForm(emptyGasto(user.email)); setArchivo(null); setPreview(null); setTranscripcion("");
     setTipo("general"); setInsumoSel(""); setLitrosUsados("");
+    avisar(eraEdicion ? "Cambios guardados ✓" : "Gasto guardado ✓");
   };
 
   const eliminar = (id) => { if (confirm("¿Eliminar este gasto?")) api.remove(id); };
@@ -643,9 +660,9 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     <div className="space-y-5">
       <div className="cc-card p-4 space-y-4">
         <div className="flex flex-wrap gap-2">
-          <label className="cc-btn cc-btn-ghost" style={{ cursor: "pointer" }}><Paperclip size={14} /> {archivo ? archivo.name : "Adjuntar factura (imagen o PDF)"}<input type="file" accept="image/*,.pdf" capture="environment" onChange={onFile} style={{ display: "none" }} /></label>
-          {archivo?.type?.startsWith("image/") && <button className="cc-btn cc-btn-ghost" onClick={extraerDeFactura} disabled={extrayendo}>{extrayendo ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />} Extraer datos con IA</button>}
-          <button className="cc-btn" style={{ background: grabando ? "var(--rust)" : "var(--soil)", color: "#fff" }} onClick={grabando ? detener : grabar}><Mic size={14} /> {grabando ? "Detener" : "Dictar por voz"}</button>
+          <label className="cc-btn cc-btn-ghost" style={{ cursor: "pointer" }}><Paperclip size={17} /> {archivo ? archivo.name : "Adjuntar factura (imagen o PDF)"}<input type="file" accept="image/*,.pdf" capture="environment" onChange={onFile} style={{ display: "none" }} /></label>
+          {archivo?.type?.startsWith("image/") && <button className="cc-btn cc-btn-ghost" onClick={extraerDeFactura} disabled={extrayendo}>{extrayendo ? <Loader2 size={17} className="animate-spin" /> : <Camera size={17} />} Extraer datos con IA</button>}
+          <button className="cc-btn" style={{ background: grabando ? "var(--rust)" : "var(--soil)", color: "#fff" }} onClick={grabando ? detener : grabar}><Mic size={17} /> {grabando ? "Detener" : "Dictar por voz"}</button>
         </div>
 
         {preview && <img src={preview} alt="Factura" style={{ maxWidth: 140, borderRadius: 8, border: "1px solid var(--line)" }} />}
@@ -653,21 +670,21 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
         {(transcripcion || grabando) && (
           <div>
             <textarea className="cc-input" rows={2} placeholder="Ej: flete a Nueva Palmira, ochocientos dólares, quince de marzo" value={transcripcion} onChange={(e) => setTranscripcion(e.target.value)} />
-            <button className="cc-btn cc-btn-ghost mt-2" onClick={interpretarVoz} disabled={interpretando}>{interpretando ? <Loader2 size={14} className="animate-spin" /> : <Sprout size={14} />} Interpretar con IA</button>
+            <button className="cc-btn cc-btn-ghost mt-2" onClick={interpretarVoz} disabled={interpretando}>{interpretando ? <Loader2 size={17} className="animate-spin" /> : <Sprout size={17} />} Interpretar con IA</button>
           </div>
         )}
 
-        {error && <div style={{ color: "var(--rust)", fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}><AlertCircle size={14} />{error}</div>}
+        {error && <div style={{ color: "var(--rust)", fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}><AlertCircle size={17} />{error}</div>}
 
         {editId && (
           <div className="flex items-center gap-2" style={{ background: "#FDF3E0", border: "1px solid var(--gold)", borderRadius: 8, padding: "6px 10px", fontSize: 12.5, color: "#7A5A1E" }}>
-            <Pencil size={13} /> Editando un gasto ya guardado.
+            <Pencil size={16} /> Editando un gasto ya guardado.
           </div>
         )}
 
         <div className="flex gap-2">
           <button className="cc-btn" onClick={() => setTipo("general")} style={{ background: tipo === "general" ? "var(--soil)" : "#fff", color: tipo === "general" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Gasto general</button>
-          <button className="cc-btn" onClick={() => setTipo("insumo")} style={{ background: tipo === "insumo" ? "var(--soil)" : "#fff", color: tipo === "insumo" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}><Boxes size={14} /> Insumo de stock</button>
+          <button className="cc-btn" onClick={() => setTipo("insumo")} style={{ background: tipo === "insumo" ? "var(--soil)" : "#fff", color: tipo === "insumo" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}><Boxes size={17} /> Insumo de stock</button>
         </div>
 
         {tipo === "insumo" ? (
@@ -699,20 +716,33 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
           </div>
         )}
         {editId && archivo === null && <div style={{ fontSize: 12, color: "#8A8570" }}>La factura adjunta actual se mantiene salvo que subas una nueva arriba.</div>}
-        <div className="flex gap-2">
+        <div className="flex gap-2 items-center flex-wrap">
           <button className="cc-btn cc-btn-primary" onClick={guardar} disabled={subiendo}>
-            {subiendo ? <Loader2 size={15} className="animate-spin" /> : editId ? <Pencil size={15} /> : <Plus size={15} />} {editId ? "Guardar cambios" : "Guardar gasto"}
+            {subiendo ? <Loader2 size={18} className="animate-spin" /> : editId ? <Pencil size={18} /> : <Plus size={18} />} {editId ? "Guardar cambios" : "Guardar gasto"}
           </button>
-          {editId && <button className="cc-btn cc-btn-ghost" onClick={cancelarEdicion}><X size={15} /> Cancelar</button>}
+          {editId && <button className="cc-btn cc-btn-ghost" onClick={cancelarEdicion}><X size={18} /> Cancelar</button>}
+          {mensaje && <span style={{ color: "var(--soil-light)", fontWeight: 700, fontSize: 13.5 }}>{mensaje}</span>}
         </div>
       </div>
+
+      {gastos.length > 0 && (
+        <div style={{ maxWidth: 320 }}>
+          <input className="cc-input" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por origen, detalle o usuario..." />
+        </div>
+      )}
 
       {gastos.length === 0 ? <EmptyState icon={Receipt} title="Sin gastos cargados" text="Cargá el primer gasto de este cultivo, escrito, por voz o desde una foto de factura." /> : (
         <div className="cc-card overflow-hidden">
           <table className="w-full" style={{ fontSize: 13 }}>
-            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Detalle</th><th className="px-3 py-2">Usuario</th><th className="px-3 py-2 text-right">Monto</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
+            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Detalle</th><th className="px-3 py-2">Usuario</th><th className="px-3 py-2 text-right">Monto</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
             <tbody>
-              {[...gastos].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((g) => (
+              {[...gastos]
+                .filter((g) => {
+                  const q = busqueda.trim().toLowerCase();
+                  if (!q) return true;
+                  return [g.origen, g.detalle, g.usuario].some((v) => (v || "").toLowerCase().includes(q));
+                })
+                .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((g) => (
                 <tr key={g.id} style={{ borderTop: "1px solid var(--line)", background: editId === g.id ? "#FDF3E0" : "transparent" }}>
                   <td className="px-3 py-2 cc-mono">{g.fecha}</td>
                   <td className="px-3 py-2">
@@ -722,13 +752,14 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                   <td className="px-3 py-2" style={{ color: "#5A5647" }}>{g.detalle}</td>
                   <td className="px-3 py-2" style={{ color: "#8A8570", fontSize: 12 }}>{g.usuario}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmtUSD(g.monto)}</td>
-                  <td className="px-3 py-2">{g.facturaUrl && <a href={g.facturaUrl} target="_blank" rel="noreferrer"><FileText size={14} color="var(--frost)" /></a>}</td>
-                  <td className="px-3 py-2 text-right"><button onClick={() => editar(g)}><Pencil size={13} color="var(--frost)" /></button></td>
-                  <td className="px-3 py-2 text-right"><button onClick={() => eliminar(g.id)}><Trash2 size={13} color="var(--rust)" /></button></td>
+                  <td className="px-3 py-2">{g.facturaUrl && <a href={g.facturaUrl} target="_blank" rel="noreferrer"><FileText size={17} color="var(--frost)" /></a>}</td>
+                  <td className="px-3 py-2 text-right"><button onClick={() => duplicar(g)} title="Duplicar"><Copy size={16} color="#8A8570" /></button></td>
+                  <td className="px-3 py-2 text-right"><button onClick={() => editar(g)} title="Editar"><Pencil size={16} color="var(--frost)" /></button></td>
+                  <td className="px-3 py-2 text-right"><button onClick={() => eliminar(g.id)} title="Eliminar"><Trash2 size={16} color="var(--rust)" /></button></td>
                 </tr>
               ))}
             </tbody>
-            <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}><td className="px-3 py-2" colSpan={4}>Total</td><td className="px-3 py-2 text-right cc-mono">{fmtUSD(gastos.reduce((s, g) => s + Number(g.monto || 0), 0))}</td><td colSpan={3}></td></tr></tfoot>
+            <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}><td className="px-3 py-2" colSpan={4}>Total</td><td className="px-3 py-2 text-right cc-mono">{fmtUSD(gastos.reduce((s, g) => s + Number(g.monto || 0), 0))}</td><td colSpan={4}></td></tr></tfoot>
           </table>
         </div>
       )}
@@ -742,12 +773,14 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
 function VentasTab({ cultivo, ventas, api }) {
   const [form, setForm] = useState({ fecha: "", origen: "", toneladas: "", dolaresPorTonelada: "" });
   const set = (k, v) => setForm({ ...form, [k]: v });
+  const [mensaje, setMensaje] = useState("");
   const origenesSugeridos = Array.from(new Set(ventas.map((v) => v.origen).filter(Boolean)));
 
   const guardar = () => {
     if (!form.fecha || !form.toneladas || !form.dolaresPorTonelada) { alert("Completá fecha, toneladas y U$S/ton."); return; }
     api.add({ cultivoId: cultivo.id, fecha: form.fecha, origen: form.origen, toneladas: Number(form.toneladas), dolaresPorTonelada: Number(form.dolaresPorTonelada) });
     setForm({ fecha: "", origen: "", toneladas: "", dolaresPorTonelada: "" });
+    setMensaje("Venta guardada ✓"); setTimeout(() => setMensaje(""), 2500);
   };
   const eliminar = (id) => { if (confirm("¿Eliminar esta venta?")) api.remove(id); };
   const totalTon = ventas.reduce((s, v) => s + Number(v.toneladas || 0), 0);
@@ -766,7 +799,10 @@ function VentasTab({ cultivo, ventas, api }) {
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Toneladas</label><input className="cc-input" type="number" value={form.toneladas} onChange={(e) => set("toneladas", e.target.value)} /></div>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>U$S / tonelada</label><input className="cc-input" type="number" value={form.dolaresPorTonelada} onChange={(e) => set("dolaresPorTonelada", e.target.value)} /></div>
         </div>
-        <button className="cc-btn cc-btn-primary" onClick={guardar}><Plus size={15} /> Guardar venta</button>
+        <div className="flex items-center gap-3">
+          <button className="cc-btn cc-btn-primary" onClick={guardar}><Plus size={18} /> Guardar venta</button>
+          {mensaje && <span style={{ color: "var(--soil-light)", fontWeight: 700, fontSize: 13.5 }}>{mensaje}</span>}
+        </div>
       </div>
 
       {ventas.length === 0 ? <EmptyState icon={DollarSign} title="Sin ventas cargadas" text="Cargá las ventas de este cultivo: fecha, origen, toneladas y precio por tonelada." /> : (
@@ -780,7 +816,7 @@ function VentasTab({ cultivo, ventas, api }) {
                   <td className="px-3 py-2 text-right cc-mono">{fmt(v.toneladas, 2)}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmtUSD(v.dolaresPorTonelada)}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmtUSD(v.toneladas * v.dolaresPorTonelada)}</td>
-                  <td className="px-3 py-2 text-right"><button onClick={() => eliminar(v.id)}><Trash2 size={13} color="var(--rust)" /></button></td>
+                  <td className="px-3 py-2 text-right"><button onClick={() => eliminar(v.id)}><Trash2 size={16} color="var(--rust)" /></button></td>
                 </tr>
               ))}
             </tbody>
@@ -798,6 +834,7 @@ function VentasTab({ cultivo, ventas, api }) {
 function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
   const [form, setForm] = useState({ fecha: "", remito: "", campo: "", destino: "", kgTolva: "", kgBrutos: "", kgSL: "", humedad: "" });
   const set = (k, v) => setForm({ ...form, [k]: v });
+  const [mensaje, setMensaje] = useState("");
 
   const guardar = () => {
     if (!form.fecha || !form.remito || !form.kgSL) { alert("Completá al menos fecha, N° de remito y Kg SL."); return; }
@@ -806,6 +843,7 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
       kgTolva: Number(form.kgTolva || 0), kgBrutos: Number(form.kgBrutos || 0), kgSL: Number(form.kgSL || 0), humedad: Number(form.humedad || 0),
     });
     setForm({ fecha: "", remito: "", campo: "", destino: "", kgTolva: "", kgBrutos: "", kgSL: "", humedad: "" });
+    setMensaje("Remito guardado ✓"); setTimeout(() => setMensaje(""), 2500);
   };
   const eliminar = (id) => { if (confirm("¿Eliminar este remito?")) api.remove(id); };
   const totalKgSL = remitos.reduce((s, r) => s + Number(r.kgSL || 0), 0);
@@ -827,7 +865,10 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Kg SL</label><input className="cc-input" type="number" value={form.kgSL} onChange={(e) => set("kgSL", e.target.value)} /></div>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Humedad (%)</label><input className="cc-input" type="number" value={form.humedad} onChange={(e) => set("humedad", e.target.value)} /></div>
         </div>
-        <button className="cc-btn cc-btn-primary" onClick={guardar}><Plus size={15} /> Guardar remito</button>
+        <div className="flex items-center gap-3">
+          <button className="cc-btn cc-btn-primary" onClick={guardar}><Plus size={18} /> Guardar remito</button>
+          {mensaje && <span style={{ color: "var(--soil-light)", fontWeight: 700, fontSize: 13.5 }}>{mensaje}</span>}
+        </div>
       </div>
 
       {remitos.length === 0 ? <EmptyState icon={Truck} title="Sin remitos cargados" text="Cargá cada remito de entrega de grano con sus kilos seco y limpio (Kg SL)." /> : (
@@ -840,7 +881,7 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
                   <td className="px-3 py-2 cc-mono">{r.fecha}</td><td className="px-3 py-2">{r.remito}</td><td className="px-3 py-2">{r.campo}</td><td className="px-3 py-2">{r.destino}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmt(r.kgTolva)}</td><td className="px-3 py-2 text-right cc-mono">{fmt(r.kgBrutos)}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmt(r.kgSL)}</td><td className="px-3 py-2 text-right cc-mono">{fmt(r.humedad, 1)}</td>
-                  <td className="px-3 py-2 text-right"><button onClick={() => eliminar(r.id)}><Trash2 size={13} color="var(--rust)" /></button></td>
+                  <td className="px-3 py-2 text-right"><button onClick={() => eliminar(r.id)}><Trash2 size={16} color="var(--rust)" /></button></td>
                 </tr>
               ))}
             </tbody>
@@ -871,7 +912,7 @@ function LotesView({ lotes, api }) {
         <div className="flex gap-3 flex-wrap items-end">
           <div style={{ flex: 1, minWidth: 180 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Nombre</label><input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Lote 4 - La Loma" /></div>
           <div style={{ width: 140 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Hectáreas (opcional)</label><input className="cc-input" type="number" value={hectareas} onChange={(e) => setHectareas(e.target.value)} /></div>
-          <button className="cc-btn cc-btn-primary" onClick={guardar}><Plus size={15} /> Agregar</button>
+          <button className="cc-btn cc-btn-primary" onClick={guardar}><Plus size={18} /> Agregar</button>
         </div>
       </div>
       {lotes.length === 0 ? <EmptyState icon={MapPin} title="No hay lotes cargados" text="Los lotes son de referencia: van a aparecer como sugerencia al cargar el 'Campo' de cada remito." /> : (
@@ -879,7 +920,7 @@ function LotesView({ lotes, api }) {
           <table className="w-full" style={{ fontSize: 13 }}>
             <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-4 py-2">Lote</th><th className="px-4 py-2">Hectáreas</th><th className="px-4 py-2"></th></tr></thead>
             <tbody>{lotes.map((l) => (
-              <tr key={l.id} style={{ borderTop: "1px solid var(--line)" }}><td className="px-4 py-2">{l.nombre}</td><td className="px-4 py-2 cc-mono">{l.hectareas ? `${fmt(l.hectareas, 1)} ha` : "-"}</td><td className="px-4 py-2 text-right"><button onClick={() => eliminar(l.id)}><Trash2 size={14} color="var(--rust)" /></button></td></tr>
+              <tr key={l.id} style={{ borderTop: "1px solid var(--line)" }}><td className="px-4 py-2">{l.nombre}</td><td className="px-4 py-2 cc-mono">{l.hectareas ? `${fmt(l.hectareas, 1)} ha` : "-"}</td><td className="px-4 py-2 text-right"><button onClick={() => eliminar(l.id)}><Trash2 size={17} color="var(--rust)" /></button></td></tr>
             ))}</tbody>
           </table>
         </div>
@@ -904,6 +945,8 @@ function InsumosView({ compras, api, stockInsumos, user }) {
   const [extrayendo, setExtrayendo] = useState(false);
   const [subiendo, setSubiendo] = useState(false);
   const [error, setError] = useState("");
+  const [mensaje, setMensaje] = useState("");
+  const [busqueda, setBusqueda] = useState("");
 
   const origenesSugeridos = Array.from(new Set(compras.map((c) => c.origen).filter(Boolean)));
   const nombresSugeridos = Array.from(new Set(compras.map((c) => c.nombre).filter(Boolean)));
@@ -956,6 +999,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
       facturaUrl, facturaNombre, usuario: user.email,
     })));
     setFecha(""); setOrigen(""); setItems([emptyItemInsumo()]); setArchivo(null); setPreview(null); setImgB64(null);
+    setMensaje("Compra guardada ✓"); setTimeout(() => setMensaje(""), 2500);
   };
 
   const eliminar = (id) => { if (confirm("¿Eliminar esta compra? Esto también reduce el stock disponible registrado.")) api.remove(id); };
@@ -970,13 +1014,13 @@ function InsumosView({ compras, api, stockInsumos, user }) {
       <div className="cc-card p-4 space-y-4">
         <div className="flex flex-wrap gap-2">
           <label className="cc-btn cc-btn-ghost" style={{ cursor: "pointer" }}>
-            <Paperclip size={14} /> {archivo ? archivo.name : "Adjuntar factura (imagen o PDF)"}
+            <Paperclip size={17} /> {archivo ? archivo.name : "Adjuntar factura (imagen o PDF)"}
             <input type="file" accept="image/*,.pdf" capture="environment" onChange={onFile} style={{ display: "none" }} />
           </label>
-          {imgB64 && <button className="cc-btn cc-btn-ghost" onClick={extraer} disabled={extrayendo}>{extrayendo ? <Loader2 size={14} className="animate-spin" /> : <Camera size={14} />} Extraer datos con IA</button>}
+          {imgB64 && <button className="cc-btn cc-btn-ghost" onClick={extraer} disabled={extrayendo}>{extrayendo ? <Loader2 size={17} className="animate-spin" /> : <Camera size={17} />} Extraer datos con IA</button>}
         </div>
         {preview && <img src={preview} alt="Factura" style={{ maxWidth: 140, borderRadius: 8, border: "1px solid var(--line)" }} />}
-        {error && <div style={{ color: "var(--rust)", fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}><AlertCircle size={14} />{error}</div>}
+        {error && <div style={{ color: "var(--rust)", fontSize: 13, display: "flex", gap: 6, alignItems: "center" }}><AlertCircle size={17} />{error}</div>}
 
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(160px,1fr))" }}>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={fecha} onChange={(e) => setFecha(e.target.value)} /></div>
@@ -997,30 +1041,43 @@ function InsumosView({ compras, api, stockInsumos, user }) {
                 </div>
                 <div style={{ width: 130 }}><input className="cc-input" type="number" placeholder="Litros totales" value={it.litros} onChange={(e) => setItem(i, { ...it, litros: e.target.value })} /></div>
                 <div style={{ width: 130 }}><input className="cc-input" type="number" placeholder="Precio total U$S" value={it.precio} onChange={(e) => setItem(i, { ...it, precio: e.target.value })} /></div>
-                {items.length > 1 && <button onClick={() => quitarItem(i)}><X size={16} color="var(--rust)" /></button>}
+                {items.length > 1 && <button onClick={() => quitarItem(i)}><X size={19} color="var(--rust)" /></button>}
               </div>
             ))}
             <datalist id="nombres-insumos">{nombresSugeridos.map((n) => <option key={n} value={n} />)}</datalist>
           </div>
-          <button className="cc-btn cc-btn-ghost mt-2" onClick={agregarItem}><Plus size={14} /> Agregar otro insumo a esta factura</button>
+          <button className="cc-btn cc-btn-ghost mt-2" onClick={agregarItem}><Plus size={17} /> Agregar otro insumo a esta factura</button>
         </div>
 
-        <button className="cc-btn cc-btn-primary" onClick={guardar} disabled={subiendo}>{subiendo ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />} Guardar compra</button>
+        <div className="flex items-center gap-3">
+          <button className="cc-btn cc-btn-primary" onClick={guardar} disabled={subiendo}>{subiendo ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />} Guardar compra</button>
+          {mensaje && <span style={{ color: "var(--soil-light)", fontWeight: 700, fontSize: 13.5 }}>{mensaje}</span>}
+        </div>
       </div>
 
       <div>
         <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Stock actual</div>
+
+        {stockInsumos.some((i) => i.disponible <= 0) && (
+          <div className="flex items-start gap-2 mb-3" style={{ background: "#FBEAEA", border: "1px solid var(--rust)", borderRadius: 8, padding: "10px 12px" }}>
+            <AlertCircle size={16} color="var(--rust)" style={{ marginTop: 1, flexShrink: 0 }} />
+            <div style={{ fontSize: 13, color: "#7A2E2E" }}>
+              <b>Stock agotado o negativo:</b> {stockInsumos.filter((i) => i.disponible <= 0).map((i) => i.nombre).join(", ")}. Revisá si falta cargar alguna compra.
+            </div>
+          </div>
+        )}
+
         {stockInsumos.length === 0 ? <EmptyState icon={Boxes} title="Sin insumos cargados" text="Cuando registres una compra, el stock disponible va a aparecer acá." /> : (
           <div className="cc-card overflow-hidden">
             <table className="w-full" style={{ fontSize: 13 }}>
               <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Comprado</th><th className="px-3 py-2 text-right">Consumido</th><th className="px-3 py-2 text-right">Disponible</th><th className="px-3 py-2 text-right">Costo prom. / L</th></tr></thead>
               <tbody>
                 {stockInsumos.sort((a, b) => a.nombre.localeCompare(b.nombre)).map((i) => (
-                  <tr key={i.nombre} style={{ borderTop: "1px solid var(--line)" }}>
-                    <td className="px-3 py-2">{i.nombre}</td>
+                  <tr key={i.nombre} style={{ borderTop: "1px solid var(--line)", background: i.disponible <= 0 ? "#FBEAEA" : "transparent" }}>
+                    <td className="px-3 py-2">{i.nombre} {i.disponible < 0 && <AlertCircle size={13} color="var(--rust)" style={{ display: "inline", marginLeft: 4, verticalAlign: "-2px" }} />}</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmt(i.litrosComprados, 1)} L</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmt(i.litrosConsumidos, 1)} L</td>
-                    <td className="px-3 py-2 text-right cc-mono" style={{ color: i.disponible < 0 ? "var(--rust)" : "var(--soil-light)", fontWeight: 700 }}>{fmt(i.disponible, 1)} L</td>
+                    <td className="px-3 py-2 text-right cc-mono" style={{ color: i.disponible <= 0 ? "var(--rust)" : "var(--soil-light)", fontWeight: 700 }}>{fmt(i.disponible, 1)} L</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmtUSD(i.costoPromedioPorLitro)}</td>
                   </tr>
                 ))}
@@ -1031,21 +1088,30 @@ function InsumosView({ compras, api, stockInsumos, user }) {
       </div>
 
       <div>
-        <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Historial de compras</div>
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <div className="cc-h" style={{ fontSize: 16, fontWeight: 600 }}>Historial de compras</div>
+          {compras.length > 0 && <input className="cc-input" style={{ maxWidth: 280 }} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por insumo u origen..." />}
+        </div>
         {compras.length === 0 ? <EmptyState icon={Receipt} title="Sin compras registradas" text="Registrá tu primera compra de insumos arriba." /> : (
           <div className="cc-card overflow-hidden">
             <table className="w-full" style={{ fontSize: 12.5 }}>
               <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Litros</th><th className="px-3 py-2 text-right">Precio</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
               <tbody>
-                {[...compras].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((c) => (
+                {[...compras]
+                  .filter((c) => {
+                    const q = busqueda.trim().toLowerCase();
+                    if (!q) return true;
+                    return [c.nombre, c.origen].some((v) => (v || "").toLowerCase().includes(q));
+                  })
+                  .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((c) => (
                   <tr key={c.id} style={{ borderTop: "1px solid var(--line)" }}>
                     <td className="px-3 py-2 cc-mono">{c.fecha}</td>
                     <td className="px-3 py-2">{c.origen}</td>
                     <td className="px-3 py-2">{c.nombre}</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmt(c.litros, 1)} L</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmtUSD(c.precio)}</td>
-                    <td className="px-3 py-2">{c.facturaUrl && <a href={c.facturaUrl} target="_blank" rel="noreferrer"><FileText size={14} color="var(--frost)" /></a>}</td>
-                    <td className="px-3 py-2 text-right"><button onClick={() => eliminar(c.id)}><Trash2 size={13} color="var(--rust)" /></button></td>
+                    <td className="px-3 py-2">{c.facturaUrl && <a href={c.facturaUrl} target="_blank" rel="noreferrer"><FileText size={17} color="var(--frost)" /></a>}</td>
+                    <td className="px-3 py-2 text-right"><button onClick={() => eliminar(c.id)}><Trash2 size={16} color="var(--rust)" /></button></td>
                   </tr>
                 ))}
               </tbody>
