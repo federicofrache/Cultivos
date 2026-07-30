@@ -8,10 +8,12 @@ import {
   collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, where,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import * as XLSX from "xlsx";
 import {
   Sprout, Snowflake, Sun, Wheat, Receipt, Mic, Camera, MapPin, TrendingUp,
   TrendingDown, Plus, Trash2, Loader2, LogOut, ChevronRight, ChevronLeft,
   Truck, DollarSign, FileText, AlertCircle, CheckCircle2, Paperclip, Pencil, X, Package, Boxes, Copy, Search,
+  Download, RotateCcw, Trash, LayoutDashboard,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -80,6 +82,16 @@ function fileToBase64(file) {
     r.onerror = reject;
     r.readAsDataURL(file);
   });
+}
+
+function exportarExcel(nombreArchivo, hojas) {
+  // hojas: [{ nombre: "Gastos", filas: [{...}, ...] }, ...]
+  const wb = XLSX.utils.book_new();
+  hojas.forEach((h) => {
+    const ws = XLSX.utils.json_to_sheet(h.filas);
+    XLSX.utils.book_append_sheet(wb, ws, h.nombre.slice(0, 31));
+  });
+  XLSX.writeFile(wb, `${nombreArchivo}.xlsx`);
 }
 
 const GLOBAL_STYLES = `
@@ -170,46 +182,59 @@ function Login() {
 /* ------------------------------------------------------------------ */
 export default function App() {
   const [user, setUser] = useState(undefined);
-  const [campanias, setCampanias] = useState([]);
-  const [cultivos, setCultivos] = useState([]);
-  const [lotes, setLotes] = useState([]);
-  const [insumosCompras, setInsumosCompras] = useState([]);
-  const [gastosTodos, setGastosTodos] = useState([]);
+  const [campaniasRaw, setCampaniasRaw] = useState([]);
+  const [cultivosRaw, setCultivosRaw] = useState([]);
+  const [lotesRaw, setLotesRaw] = useState([]);
+  const [insumosComprasRaw, setInsumosComprasRaw] = useState([]);
+  const [gastosRaw, setGastosRaw] = useState([]);
+  const [ventasRaw, setVentasRaw] = useState([]);
+  const [remitosRaw, setRemitosRaw] = useState([]);
   const [nav, setNav] = useState({ view: "campanias", campaniaId: null, cultivoId: null });
 
   useEffect(() => onAuthStateChanged(auth, (u) => setUser(u)), []);
 
   useEffect(() => {
     if (!user) return;
-    const u1 = onSnapshot(collection(db, "campanias"), (s) => setCampanias(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
-    const u2 = onSnapshot(collection(db, "cultivos"), (s) => setCultivos(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
-    const u3 = onSnapshot(collection(db, "lotes"), (s) => setLotes(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
-    const u4 = onSnapshot(collection(db, "insumos_compras"), (s) => setInsumosCompras(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
-    const u5 = onSnapshot(collection(db, "gastos"), (s) => setGastosTodos(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
-    return () => { u1(); u2(); u3(); u4(); u5(); };
+    const u1 = onSnapshot(collection(db, "campanias"), (s) => setCampaniasRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const u2 = onSnapshot(collection(db, "cultivos"), (s) => setCultivosRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const u3 = onSnapshot(collection(db, "lotes"), (s) => setLotesRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const u4 = onSnapshot(collection(db, "insumos_compras"), (s) => setInsumosComprasRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const u5 = onSnapshot(collection(db, "gastos"), (s) => setGastosRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const u6 = onSnapshot(collection(db, "ventas"), (s) => setVentasRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const u7 = onSnapshot(collection(db, "remitos"), (s) => setRemitosRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, [user]);
+
+  // Versiones "activas" (sin lo que está en la papelera), que usa el resto de la app
+  const campanias = campaniasRaw.filter((x) => !x.eliminado);
+  const cultivos = cultivosRaw.filter((x) => !x.eliminado);
+  const lotes = lotesRaw.filter((x) => !x.eliminado);
+  const insumosCompras = insumosComprasRaw.filter((x) => !x.eliminado);
+  const gastosTodos = gastosRaw.filter((x) => !x.eliminado);
+  const ventasTodas = ventasRaw.filter((x) => !x.eliminado);
+  const remitosTodos = remitosRaw.filter((x) => !x.eliminado);
 
   if (user === undefined) {
     return <div style={{ background: "var(--bg)", minHeight: "100vh" }} className="flex items-center justify-center"><style>{GLOBAL_STYLES}</style><Loader2 className="animate-spin" color="var(--soil)" size={30} /></div>;
   }
   if (!user) return <Login />;
 
-  const campaniasApi = {
-    add: (data) => addDoc(collection(db, "campanias"), data),
-    remove: (id) => deleteDoc(doc(db, "campanias", id)),
-  };
-  const cultivosApi = {
-    add: (data) => addDoc(collection(db, "cultivos"), data),
-    remove: (id) => deleteDoc(doc(db, "cultivos", id)),
-  };
-  const lotesApi = {
-    add: (data) => addDoc(collection(db, "lotes"), data),
-    remove: (id) => deleteDoc(doc(db, "lotes", id)),
-  };
-  const insumosApi = {
-    add: (data) => addDoc(collection(db, "insumos_compras"), data),
-    remove: (id) => deleteDoc(doc(db, "insumos_compras", id)),
-  };
+  // Helper genérico: en vez de borrar, marca como eliminado (papelera)
+  const softDeleteApi = (coleccion) => ({
+    add: (data) => addDoc(collection(db, coleccion), data),
+    update: (id, data) => updateDoc(doc(db, coleccion, id), data),
+    remove: (id) => updateDoc(doc(db, coleccion, id), { eliminado: true, eliminadoEn: new Date().toISOString(), eliminadoPor: user.email }),
+    restaurar: (id) => updateDoc(doc(db, coleccion, id), { eliminado: false, eliminadoEn: null, eliminadoPor: null }),
+    eliminarDefinitivo: (id) => deleteDoc(doc(db, coleccion, id)),
+  });
+
+  const campaniasApi = softDeleteApi("campanias");
+  const cultivosApi = softDeleteApi("cultivos");
+  const lotesApi = softDeleteApi("lotes");
+  const insumosApi = softDeleteApi("insumos_compras");
+  const ventasApiGlobal = softDeleteApi("ventas");
+  const remitosApiGlobal = softDeleteApi("remitos");
+  const gastosApiGlobal = softDeleteApi("gastos");
 
   // Stock disponible por insumo = total comprado - total consumido en gastos de cultivos
   const stockInsumos = (() => {
@@ -246,11 +271,17 @@ export default function App() {
             </div>
           </button>
           <div className="flex items-center gap-3">
+            <button onClick={() => setNav({ view: "resumen_general", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
+              <LayoutDashboard size={16} /> Resumen general
+            </button>
             <button onClick={() => setNav({ view: "insumos", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
               <Package size={16} /> Insumos
             </button>
             <button onClick={() => setNav({ view: "lotes", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
               <MapPin size={16} /> Lotes
+            </button>
+            <button onClick={() => setNav({ view: "papelera", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
+              <Trash size={16} /> Papelera
             </button>
             <span style={{ color: "#D8DECB", fontSize: 12.5 }}>{user.email}</span>
             <button onClick={() => signOut(auth)} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}><LogOut size={16} /> Salir</button>
@@ -273,13 +304,32 @@ export default function App() {
         {nav.view === "lotes" && <LotesView lotes={lotes} api={lotesApi} />}
 
         {nav.view === "insumos" && <InsumosView compras={insumosCompras} api={insumosApi} stockInsumos={stockInsumos} user={user} />}
+
+        {nav.view === "resumen_general" && (
+          <ResumenGeneralView campanias={campanias} cultivos={cultivos} gastos={gastosTodos} ventas={ventasTodas}
+            onOpenCultivo={(cultivoId, campaniaId) => setNav({ view: "cultivo", campaniaId, cultivoId })} />
+        )}
+
+        {nav.view === "papelera" && (
+          <PapeleraView
+            grupos={[
+              { titulo: "Campañas", items: campaniasRaw.filter((x) => x.eliminado), api: campaniasApi, campo: (x) => x.nombre || x.anio },
+              { titulo: "Cultivos", items: cultivosRaw.filter((x) => x.eliminado), api: cultivosApi, campo: (x) => x.nombre },
+              { titulo: "Lotes", items: lotesRaw.filter((x) => x.eliminado), api: lotesApi, campo: (x) => x.nombre },
+              { titulo: "Insumos (compras)", items: insumosComprasRaw.filter((x) => x.eliminado), api: insumosApi, campo: (x) => `${x.nombre} — ${fmt(x.litros, 1)} L` },
+              { titulo: "Gastos", items: gastosRaw.filter((x) => x.eliminado), api: gastosApiGlobal, campo: (x) => `${x.origen} — ${fmtUSD(x.monto)}` },
+              { titulo: "Ventas", items: ventasRaw.filter((x) => x.eliminado), api: ventasApiGlobal, campo: (x) => `${x.origen} — ${fmt(x.toneladas, 2)} tn` },
+              { titulo: "Remitos", items: remitosRaw.filter((x) => x.eliminado), api: remitosApiGlobal, campo: (x) => `Remito ${x.remito}` },
+            ]}
+          />
+        )}
       </main>
     </div>
   );
 }
 
 function Breadcrumb({ nav, setNav, campania, cultivo }) {
-  if (nav.view === "campanias" || nav.view === "lotes" || nav.view === "insumos") return null;
+  if (["campanias", "lotes", "insumos", "resumen_general", "papelera"].includes(nav.view)) return null;
   return (
     <div className="flex items-center gap-1 mb-4" style={{ fontSize: 13, color: "#8A8570" }}>
       <button onClick={() => setNav({ view: "campanias", campaniaId: null, cultivoId: null })} style={{ color: "var(--frost)", fontWeight: 600 }}>Campañas</button>
@@ -319,7 +369,7 @@ function CampaniasView({ campanias, api, cultivos, onOpen }) {
   const [nombre, setNombre] = useState("");
 
   const crear = () => { api.add({ anio: Number(anio), nombre: nombre.trim() || `Campaña ${anio}` }); setNombre(""); };
-  const eliminar = (id) => { if (confirm("¿Eliminar esta campaña? Los cultivos asociados quedarán huérfanos.")) api.remove(id); };
+  const eliminar = (id) => { if (confirm("Esta campaña se moverá a la papelera (se puede restaurar después). ¿Continuar?")) api.remove(id); };
 
   return (
     <div className="space-y-5">
@@ -366,7 +416,7 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
   const opciones = categoria === "verano" ? CULTIVOS_VERANO : CULTIVOS_INVIERNO;
 
   const crear = () => api.add({ campaniaId: campania.id, categoria, nombre });
-  const eliminar = (id) => { if (confirm("¿Eliminar este cultivo? Se pierde el acceso a sus gastos e ingresos cargados.")) api.remove(id); };
+  const eliminar = (id) => { if (confirm("Este cultivo se moverá a la papelera (se puede restaurar después). ¿Continuar?")) api.remove(id); };
 
   return (
     <div className="space-y-5">
@@ -425,15 +475,25 @@ function CultivoDetail({ cultivo, lotes, user, stockInsumos, insumosCompras, gas
     const q1 = query(collection(db, "gastos"), where("cultivoId", "==", cultivo.id));
     const q2 = query(collection(db, "ventas"), where("cultivoId", "==", cultivo.id));
     const q3 = query(collection(db, "remitos"), where("cultivoId", "==", cultivo.id));
-    const u1 = onSnapshot(q1, (s) => setGastos(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
-    const u2 = onSnapshot(q2, (s) => setVentas(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
-    const u3 = onSnapshot(q3, (s) => setRemitos(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    const u1 = onSnapshot(q1, (s) => setGastos(s.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !x.eliminado)));
+    const u2 = onSnapshot(q2, (s) => setVentas(s.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !x.eliminado)));
+    const u3 = onSnapshot(q3, (s) => setRemitos(s.docs.map((d) => ({ id: d.id, ...d.data() })).filter((x) => !x.eliminado)));
     return () => { u1(); u2(); u3(); };
   }, [cultivo.id]);
 
-  const gastosApi = { add: (d) => addDoc(collection(db, "gastos"), d), update: (id, d) => updateDoc(doc(db, "gastos", id), d), remove: (id) => deleteDoc(doc(db, "gastos", id)) };
-  const ventasApi = { add: (d) => addDoc(collection(db, "ventas"), d), remove: (id) => deleteDoc(doc(db, "ventas", id)) };
-  const remitosApi = { add: (d) => addDoc(collection(db, "remitos"), d), remove: (id) => deleteDoc(doc(db, "remitos", id)) };
+  const gastosApi = {
+    add: (d) => addDoc(collection(db, "gastos"), d),
+    update: (id, d) => updateDoc(doc(db, "gastos", id), d),
+    remove: (id) => updateDoc(doc(db, "gastos", id), { eliminado: true, eliminadoEn: new Date().toISOString(), eliminadoPor: user.email }),
+  };
+  const ventasApi = {
+    add: (d) => addDoc(collection(db, "ventas"), d),
+    remove: (id) => updateDoc(doc(db, "ventas", id), { eliminado: true, eliminadoEn: new Date().toISOString(), eliminadoPor: user.email }),
+  };
+  const remitosApi = {
+    add: (d) => addDoc(collection(db, "remitos"), d),
+    remove: (id) => updateDoc(doc(db, "remitos", id), { eliminado: true, eliminadoEn: new Date().toISOString(), eliminadoPor: user.email }),
+  };
 
   const totalGastos = gastos.reduce((s, g) => s + Number(g.monto || 0), 0);
   const totalIngresos = ventas.reduce((s, v) => s + Number(v.toneladas || 0) * Number(v.dolaresPorTonelada || 0), 0);
@@ -654,7 +714,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     avisar(eraEdicion ? "Cambios guardados ✓" : "Gasto guardado ✓");
   };
 
-  const eliminar = (id) => { if (confirm("¿Eliminar este gasto?")) api.remove(id); };
+  const eliminar = (id) => { if (confirm("Este gasto se moverá a la papelera. ¿Continuar?")) api.remove(id); };
 
   return (
     <div className="space-y-5">
@@ -726,8 +786,13 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       </div>
 
       {gastos.length > 0 && (
-        <div style={{ maxWidth: 320 }}>
-          <input className="cc-input" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por origen, detalle o usuario..." />
+        <div className="flex items-center gap-3 flex-wrap">
+          <div style={{ maxWidth: 320, flex: 1 }}>
+            <input className="cc-input" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por origen, detalle o usuario..." />
+          </div>
+          <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel(`gastos_${cultivo.nombre}`, [{ nombre: "Gastos", filas: gastos.map((g) => ({ Fecha: g.fecha, Origen: g.origen, Detalle: g.detalle, Insumo: g.insumoNombre || "", "Litros usados": g.litrosUsados || "", Usuario: g.usuario, Monto: g.monto })) }])}>
+            <Download size={17} /> Exportar Excel
+          </button>
         </div>
       )}
 
@@ -782,7 +847,7 @@ function VentasTab({ cultivo, ventas, api }) {
     setForm({ fecha: "", origen: "", toneladas: "", dolaresPorTonelada: "" });
     setMensaje("Venta guardada ✓"); setTimeout(() => setMensaje(""), 2500);
   };
-  const eliminar = (id) => { if (confirm("¿Eliminar esta venta?")) api.remove(id); };
+  const eliminar = (id) => { if (confirm("Esta venta se moverá a la papelera. ¿Continuar?")) api.remove(id); };
   const totalTon = ventas.reduce((s, v) => s + Number(v.toneladas || 0), 0);
   const totalUSD = ventas.reduce((s, v) => s + Number(v.toneladas || 0) * Number(v.dolaresPorTonelada || 0), 0);
 
@@ -804,6 +869,14 @@ function VentasTab({ cultivo, ventas, api }) {
           {mensaje && <span style={{ color: "var(--soil-light)", fontWeight: 700, fontSize: 13.5 }}>{mensaje}</span>}
         </div>
       </div>
+
+      {ventas.length > 0 && (
+        <div className="flex justify-end">
+          <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel(`ventas_${cultivo.nombre}`, [{ nombre: "Ventas", filas: ventas.map((v) => ({ Fecha: v.fecha, Origen: v.origen, Toneladas: v.toneladas, "U$S/ton": v.dolaresPorTonelada, Total: v.toneladas * v.dolaresPorTonelada })) }])}>
+            <Download size={17} /> Exportar Excel
+          </button>
+        </div>
+      )}
 
       {ventas.length === 0 ? <EmptyState icon={DollarSign} title="Sin ventas cargadas" text="Cargá las ventas de este cultivo: fecha, origen, toneladas y precio por tonelada." /> : (
         <div className="cc-card overflow-hidden">
@@ -845,7 +918,7 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
     setForm({ fecha: "", remito: "", campo: "", destino: "", kgTolva: "", kgBrutos: "", kgSL: "", humedad: "" });
     setMensaje("Remito guardado ✓"); setTimeout(() => setMensaje(""), 2500);
   };
-  const eliminar = (id) => { if (confirm("¿Eliminar este remito?")) api.remove(id); };
+  const eliminar = (id) => { if (confirm("Este remito se moverá a la papelera. ¿Continuar?")) api.remove(id); };
   const totalKgSL = remitos.reduce((s, r) => s + Number(r.kgSL || 0), 0);
 
   return (
@@ -870,6 +943,14 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
           {mensaje && <span style={{ color: "var(--soil-light)", fontWeight: 700, fontSize: 13.5 }}>{mensaje}</span>}
         </div>
       </div>
+
+      {remitos.length > 0 && (
+        <div className="flex justify-end">
+          <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel(`remitos_${cultivo.nombre}`, [{ nombre: "Remitos", filas: remitos.map((r) => ({ Fecha: r.fecha, Remito: r.remito, Campo: r.campo, Destino: r.destino, "Kg tolva": r.kgTolva, "Kg brutos": r.kgBrutos, "Kg SL": r.kgSL, "Humedad %": r.humedad })) }])}>
+            <Download size={17} /> Exportar Excel
+          </button>
+        </div>
+      )}
 
       {remitos.length === 0 ? <EmptyState icon={Truck} title="Sin remitos cargados" text="Cargá cada remito de entrega de grano con sus kilos seco y limpio (Kg SL)." /> : (
         <div className="cc-card overflow-hidden">
@@ -903,7 +984,7 @@ function LotesView({ lotes, api }) {
   const [nombre, setNombre] = useState("");
   const [hectareas, setHectareas] = useState("");
   const guardar = () => { if (!nombre.trim()) return; api.add({ nombre: nombre.trim(), hectareas: hectareas ? Number(hectareas) : null }); setNombre(""); setHectareas(""); };
-  const eliminar = (id) => { if (confirm("¿Eliminar este lote?")) api.remove(id); };
+  const eliminar = (id) => { if (confirm("Este lote se moverá a la papelera. ¿Continuar?")) api.remove(id); };
 
   return (
     <div className="space-y-5">
@@ -1002,7 +1083,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
     setMensaje("Compra guardada ✓"); setTimeout(() => setMensaje(""), 2500);
   };
 
-  const eliminar = (id) => { if (confirm("¿Eliminar esta compra? Esto también reduce el stock disponible registrado.")) api.remove(id); };
+  const eliminar = (id) => { if (confirm("Esta compra se moverá a la papelera (se descontará del stock hasta que la restaures). ¿Continuar?")) api.remove(id); };
 
   return (
     <div className="space-y-6">
@@ -1090,7 +1171,14 @@ function InsumosView({ compras, api, stockInsumos, user }) {
       <div>
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
           <div className="cc-h" style={{ fontSize: 16, fontWeight: 600 }}>Historial de compras</div>
-          {compras.length > 0 && <input className="cc-input" style={{ maxWidth: 280 }} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por insumo u origen..." />}
+          <div className="flex items-center gap-2">
+            {compras.length > 0 && <input className="cc-input" style={{ maxWidth: 280 }} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por insumo u origen..." />}
+            {compras.length > 0 && (
+              <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel("compras_insumos", [{ nombre: "Compras", filas: compras.map((c) => ({ Fecha: c.fecha, Origen: c.origen, Insumo: c.nombre, Litros: c.litros, Precio: c.precio })) }, { nombre: "Stock", filas: stockInsumos.map((i) => ({ Insumo: i.nombre, Comprado: i.litrosComprados, Consumido: i.litrosConsumidos, Disponible: i.disponible, "Costo prom/L": i.costoPromedioPorLitro })) }])}>
+                <Download size={17} /> Exportar Excel
+              </button>
+            )}
+          </div>
         </div>
         {compras.length === 0 ? <EmptyState icon={Receipt} title="Sin compras registradas" text="Registrá tu primera compra de insumos arriba." /> : (
           <div className="cc-card overflow-hidden">
@@ -1119,6 +1207,130 @@ function InsumosView({ compras, api, stockInsumos, user }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Resumen general (todas las campañas y cultivos)                     */
+/* ------------------------------------------------------------------ */
+function ResumenGeneralView({ campanias, cultivos, gastos, ventas, onOpenCultivo }) {
+  const filas = cultivos.map((c) => {
+    const campania = campanias.find((cp) => cp.id === c.campaniaId);
+    const gastosCultivo = gastos.filter((g) => g.cultivoId === c.id);
+    const ventasCultivo = ventas.filter((v) => v.cultivoId === c.id);
+    const totalGastos = gastosCultivo.reduce((s, g) => s + Number(g.monto || 0), 0);
+    const totalIngresos = ventasCultivo.reduce((s, v) => s + Number(v.toneladas || 0) * Number(v.dolaresPorTonelada || 0), 0);
+    return {
+      cultivoId: c.id, campaniaId: c.campaniaId, cultivoNombre: c.nombre, categoria: c.categoria,
+      campaniaNombre: campania ? (campania.nombre || campania.anio) : "—", anio: campania?.anio || 0,
+      totalGastos, totalIngresos, margen: totalIngresos - totalGastos,
+    };
+  }).sort((a, b) => b.anio - a.anio || a.cultivoNombre.localeCompare(b.cultivoNombre));
+
+  const totalGastosGeneral = filas.reduce((s, f) => s + f.totalGastos, 0);
+  const totalIngresosGeneral = filas.reduce((s, f) => s + f.totalIngresos, 0);
+  const margenGeneral = totalIngresosGeneral - totalGastosGeneral;
+
+  const exportar = () => exportarExcel("resumen_general_campo_costo", [{
+    nombre: "Resumen",
+    filas: filas.map((f) => ({ Campaña: f.campaniaNombre, Cultivo: f.cultivoNombre, Categoría: f.categoria, "Total gastos": f.totalGastos, "Total ingresos": f.totalIngresos, Margen: f.margen })),
+  }]);
+
+  if (!cultivos.length) {
+    return <EmptyState icon={LayoutDashboard} title="Todavía no hay datos para resumir" text="Cuando crees campañas y cultivos con gastos e ingresos, acá vas a ver el resumen de todo junto." />;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div className="flex items-center justify-between flex-wrap gap-2">
+        <div>
+          <div className="cc-h" style={{ fontSize: 20, fontWeight: 600 }}>Resumen general</div>
+          <div style={{ fontSize: 12.5, color: "#8A8570" }}>Todas las campañas y cultivos juntos, de un vistazo.</div>
+        </div>
+        <button className="cc-btn cc-btn-ghost" onClick={exportar}><Download size={17} /> Exportar Excel</button>
+      </div>
+
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))" }}>
+        <StatCard label="Total gastos (todo)" value={fmtUSD(totalGastosGeneral)} icon={Receipt} color="var(--rust)" />
+        <StatCard label="Total ingresos (todo)" value={fmtUSD(totalIngresosGeneral)} icon={DollarSign} color="var(--soil-light)" />
+        <StatCard label="Margen (todo)" value={fmtUSD(margenGeneral)} icon={margenGeneral >= 0 ? TrendingUp : TrendingDown} color={margenGeneral >= 0 ? "var(--soil-light)" : "var(--rust)"} />
+      </div>
+
+      <div className="cc-card overflow-hidden">
+        <table className="w-full" style={{ fontSize: 13 }}>
+          <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}>
+            <th className="px-3 py-2">Campaña</th><th className="px-3 py-2">Cultivo</th>
+            <th className="px-3 py-2 text-right">Gastos</th><th className="px-3 py-2 text-right">Ingresos</th><th className="px-3 py-2 text-right">Margen</th>
+          </tr></thead>
+          <tbody>
+            {filas.map((f) => (
+              <tr key={f.cultivoId} style={{ borderTop: "1px solid var(--line)", cursor: "pointer" }} onClick={() => onOpenCultivo(f.cultivoId, f.campaniaId)}>
+                <td className="px-3 py-2">{f.campaniaNombre}</td>
+                <td className="px-3 py-2">
+                  <span className="cc-chip" style={{ background: CAT_COLOR[f.categoria] + "22", color: CAT_COLOR[f.categoria], marginRight: 6 }}>{f.categoria === "verano" ? "V" : "I"}</span>
+                  {f.cultivoNombre}
+                </td>
+                <td className="px-3 py-2 text-right cc-mono">{fmtUSD(f.totalGastos)}</td>
+                <td className="px-3 py-2 text-right cc-mono">{fmtUSD(f.totalIngresos)}</td>
+                <td className="px-3 py-2 text-right cc-mono" style={{ color: f.margen >= 0 ? "var(--soil-light)" : "var(--rust)", fontWeight: 700 }}>{fmtUSD(f.margen)}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}>
+            <td className="px-3 py-2" colSpan={2}>Total</td>
+            <td className="px-3 py-2 text-right cc-mono">{fmtUSD(totalGastosGeneral)}</td>
+            <td className="px-3 py-2 text-right cc-mono">{fmtUSD(totalIngresosGeneral)}</td>
+            <td className="px-3 py-2 text-right cc-mono">{fmtUSD(margenGeneral)}</td>
+          </tr></tfoot>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Papelera                                                            */
+/* ------------------------------------------------------------------ */
+function PapeleraView({ grupos }) {
+  const hayAlgo = grupos.some((g) => g.items.length > 0);
+  if (!hayAlgo) {
+    return <EmptyState icon={Trash} title="La papelera está vacía" text="Todo lo que borres desde cualquier parte de la app va a aparecer acá antes de eliminarse para siempre." />;
+  }
+  return (
+    <div className="space-y-6">
+      <div>
+        <div className="cc-h" style={{ fontSize: 20, fontWeight: 600 }}>Papelera</div>
+        <div style={{ fontSize: 12.5, color: "#8A8570" }}>Lo que borres queda acá. Podés restaurarlo o eliminarlo para siempre.</div>
+      </div>
+      {grupos.filter((g) => g.items.length > 0).map((g) => (
+        <div key={g.titulo}>
+          <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>{g.titulo} ({g.items.length})</div>
+          <div className="cc-card overflow-hidden">
+            <table className="w-full" style={{ fontSize: 13 }}>
+              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Detalle</th><th className="px-3 py-2">Eliminado por</th><th className="px-3 py-2">Cuándo</th><th className="px-3 py-2"></th></tr></thead>
+              <tbody>
+                {g.items.map((it) => (
+                  <tr key={it.id} style={{ borderTop: "1px solid var(--line)" }}>
+                    <td className="px-3 py-2">{g.campo(it)}</td>
+                    <td className="px-3 py-2" style={{ color: "#8A8570", fontSize: 12 }}>{it.eliminadoPor || "-"}</td>
+                    <td className="px-3 py-2 cc-mono" style={{ fontSize: 12 }}>{it.eliminadoEn ? new Date(it.eliminadoEn).toLocaleString("es-UY") : "-"}</td>
+                    <td className="px-3 py-2 text-right">
+                      <div className="flex gap-2 justify-end">
+                        <button className="cc-btn cc-btn-ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => g.api.restaurar(it.id)}><RotateCcw size={15} /> Restaurar</button>
+                        <button className="cc-btn" style={{ padding: "5px 10px", fontSize: 12, background: "var(--rust)", color: "#fff" }}
+                          onClick={() => { if (confirm("Esto lo borra para siempre, sin poder recuperarlo. ¿Continuar?")) g.api.eliminarDefinitivo(it.id); }}>
+                          <Trash2 size={15} /> Eliminar para siempre
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
