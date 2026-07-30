@@ -93,9 +93,11 @@ const GLOBAL_STYLES = `
   .cc-h{font-family:var(--font-display);}
   .cc-mono{font-family:var(--font-mono);}
   .cc-card{background:var(--panel); border:1px solid var(--line); border-radius:10px;}
-  .cc-input{width:100%; border:1px solid var(--line); border-radius:6px; padding:8px 10px; background:#fff; font-family:var(--font-body); font-size:14px;}
-  .cc-input:focus{outline:2px solid var(--gold); outline-offset:1px;}
-  .cc-input:disabled{background:#F1EFE6; color:#8A8570;}
+  .cc-input{width:100%; border:1.5px solid #C9C3AC; border-radius:8px; padding:12px 14px; background:#fff; font-family:var(--font-body); font-size:15.5px; transition:border-color .12s ease;}
+  .cc-input:hover{border-color:#A69B7A;}
+  .cc-input:focus{outline:none; border-color:var(--gold); box-shadow:0 0 0 3px rgba(198,138,46,0.18);}
+  .cc-input:disabled{background:#F1EFE6; color:#8A8570; border-color:var(--line);}
+  label{font-size:13px !important; font-weight:600; color:#5A5647 !important; display:block; margin-bottom:3px;}
   .cc-btn{border-radius:7px; padding:9px 16px; font-weight:600; font-size:14px; display:inline-flex; align-items:center; gap:6px; cursor:pointer; border:none;}
   .cc-btn-primary{background:var(--soil); color:#fff;}
   .cc-btn-primary:hover{background:var(--soil-light);}
