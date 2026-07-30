@@ -22,6 +22,10 @@ import {
 const CULTIVOS_VERANO = ["Soja", "Maíz", "Sorgo"];
 const CULTIVOS_INVIERNO = ["Colza", "Carinata", "Trigo", "Cebada", "Lupino", "Camelina"];
 const CAT_COLOR = { verano: "#C68A2E", invierno: "#3D6E8C" };
+const CATEGORIAS_GASTO = ["Servicio", "Renta", "Seguro", "Asesoramiento", "Otro"];
+const GASTO_CAT_COLOR = {
+  Insumo: "#5B4B8A", Servicio: "#8A6D3B", Renta: "#8C3D3D", Seguro: "#3D6E8C", Asesoramiento: "#5C7A4E", Otro: "#7A7267",
+};
 
 const fmt = (n, decimals = 0) => {
   if (n === null || n === undefined || isNaN(n)) return "-";
@@ -530,6 +534,39 @@ function CultivoDetail({ cultivo, lotes, user, stockInsumos, insumosCompras, gas
           </div>
 
           <div className="cc-card p-4">
+            <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Gastos por tipo</div>
+            {gastos.length === 0 ? (
+              <div style={{ fontSize: 13, color: "#8A8570" }}>Todavía no hay gastos cargados en este cultivo.</div>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(
+                  gastos.reduce((acc, g) => {
+                    const cat = g.categoriaGasto || (g.insumoNombre ? "Insumo" : "Otro");
+                    acc[cat] = (acc[cat] || 0) + Number(g.monto || 0);
+                    return acc;
+                  }, {})
+                )
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([cat, monto]) => {
+                    const pct = totalGastos ? (monto / totalGastos) * 100 : 0;
+                    const color = GASTO_CAT_COLOR[cat] || GASTO_CAT_COLOR.Otro;
+                    return (
+                      <div key={cat}>
+                        <div className="flex items-center justify-between" style={{ fontSize: 13 }}>
+                          <span style={{ fontWeight: 600, color: "#5A5647" }}>{cat}</span>
+                          <span className="cc-mono">{fmtUSD(monto)} <span style={{ color: "#8A8570" }}>({fmt(pct, 1)}%)</span></span>
+                        </div>
+                        <div style={{ background: "#EEEADA", borderRadius: 99, height: 8, marginTop: 4, overflow: "hidden" }}>
+                          <div style={{ width: `${Math.min(pct, 100)}%`, background: color, height: "100%", borderRadius: 99 }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+
+          <div className="cc-card p-4">
             <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Conciliación de toneladas</div>
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))" }}>
               <MiniStat label="Toneladas (ventas)" value={`${fmt(totalToneladasVentas, 2)} tn`} />
@@ -571,7 +608,7 @@ function MiniStat({ label, value }) {
 /* ------------------------------------------------------------------ */
 /*  Gastos                                                               */
 /* ------------------------------------------------------------------ */
-const emptyGasto = (email) => ({ origen: "", monto: "", detalle: "", fecha: "", usuario: email });
+const emptyGasto = (email) => ({ origen: "", monto: "", detalle: "", fecha: "", usuario: email, categoriaGasto: "Servicio" });
 
 function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, gastosTodos }) {
   const [form, setForm] = useState(emptyGasto(user.email));
@@ -606,10 +643,10 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     setEditId(g.id);
     if (g.insumoNombre) {
       setTipo("insumo"); setInsumoSel(g.insumoNombre); setLitrosUsados(String(g.litrosUsados ?? ""));
-      setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email });
+      setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email, categoriaGasto: "Insumo" });
     } else {
       setTipo("general"); setInsumoSel(""); setLitrosUsados("");
-      setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email });
+      setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email, categoriaGasto: g.categoriaGasto || "Servicio" });
     }
     setArchivo(null); setPreview(null); setTranscripcion(""); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -618,10 +655,10 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     setEditId(null);
     if (g.insumoNombre) {
       setTipo("insumo"); setInsumoSel(g.insumoNombre); setLitrosUsados(String(g.litrosUsados ?? ""));
-      setForm({ origen: g.origen || "", monto: "", detalle: g.detalle || "", fecha: "", usuario: user.email });
+      setForm({ origen: g.origen || "", monto: "", detalle: g.detalle || "", fecha: "", usuario: user.email, categoriaGasto: "Insumo" });
     } else {
       setTipo("general"); setInsumoSel(""); setLitrosUsados("");
-      setForm({ origen: g.origen || "", monto: String(g.monto ?? ""), detalle: g.detalle || "", fecha: "", usuario: user.email });
+      setForm({ origen: g.origen || "", monto: String(g.monto ?? ""), detalle: g.detalle || "", fecha: "", usuario: user.email, categoriaGasto: g.categoriaGasto || "Servicio" });
     }
     setArchivo(null); setPreview(null); setTranscripcion(""); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -697,9 +734,10 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       datos = {
         origen: form.origen || insumoSel, monto: montoCalculado, detalle: form.detalle || `Consumo de ${insumoSel} — ${litrosUsados} L`,
         fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: insumoSel, litrosUsados: Number(litrosUsados), costoPorLitro: fifo.costoPromedioEfectivo,
+        categoriaGasto: "Insumo",
       };
     } else {
-      datos = { origen: form.origen, monto: Number(form.monto), detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: null, litrosUsados: null };
+      datos = { origen: form.origen, monto: Number(form.monto), detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: null, litrosUsados: null, categoriaGasto: form.categoriaGasto || "Otro" };
     }
     if (archivo) { datos.facturaUrl = facturaUrl; datos.facturaNombre = facturaNombre; }
 
@@ -765,6 +803,12 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
         ) : (
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))" }}>
             <div>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Categoría</label>
+              <select className="cc-input" value={form.categoriaGasto} onChange={(e) => set("categoriaGasto", e.target.value)}>
+                {CATEGORIAS_GASTO.map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
+            <div>
               <label style={{ fontSize: 12, color: "#8A8570" }}>Origen</label>
               <input className="cc-input" list="origenes-gastos" value={form.origen} onChange={(e) => set("origen", e.target.value)} placeholder="Proveedor, gasoil, renta..." />
               <datalist id="origenes-gastos">{origenesSugeridos.map((o) => <option key={o} value={o} />)}</datalist>
@@ -790,7 +834,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
           <div style={{ maxWidth: 320, flex: 1 }}>
             <input className="cc-input" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por origen, detalle o usuario..." />
           </div>
-          <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel(`gastos_${cultivo.nombre}`, [{ nombre: "Gastos", filas: gastos.map((g) => ({ Fecha: g.fecha, Origen: g.origen, Detalle: g.detalle, Insumo: g.insumoNombre || "", "Litros usados": g.litrosUsados || "", Usuario: g.usuario, Monto: g.monto })) }])}>
+          <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel(`gastos_${cultivo.nombre}`, [{ nombre: "Gastos", filas: gastos.map((g) => ({ Fecha: g.fecha, Categoría: g.categoriaGasto || (g.insumoNombre ? "Insumo" : "Otro"), Origen: g.origen, Detalle: g.detalle, Insumo: g.insumoNombre || "", "Litros usados": g.litrosUsados || "", Usuario: g.usuario, Monto: g.monto })) }])}>
             <Download size={17} /> Exportar Excel
           </button>
         </div>
@@ -799,7 +843,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       {gastos.length === 0 ? <EmptyState icon={Receipt} title="Sin gastos cargados" text="Cargá el primer gasto de este cultivo, escrito, por voz o desde una foto de factura." /> : (
         <div className="cc-card overflow-hidden">
           <table className="w-full" style={{ fontSize: 13 }}>
-            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Detalle</th><th className="px-3 py-2">Usuario</th><th className="px-3 py-2 text-right">Monto</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
+            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Categoría</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Detalle</th><th className="px-3 py-2">Usuario</th><th className="px-3 py-2 text-right">Monto</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
             <tbody>
               {[...gastos]
                 .filter((g) => {
@@ -810,6 +854,11 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                 .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((g) => (
                 <tr key={g.id} style={{ borderTop: "1px solid var(--line)", background: editId === g.id ? "#FDF3E0" : "transparent" }}>
                   <td className="px-3 py-2 cc-mono">{g.fecha}</td>
+                  <td className="px-3 py-2">
+                    <span className="cc-chip" style={{ background: (GASTO_CAT_COLOR[g.categoriaGasto] || GASTO_CAT_COLOR.Otro) + "22", color: GASTO_CAT_COLOR[g.categoriaGasto] || GASTO_CAT_COLOR.Otro }}>
+                      {g.categoriaGasto || (g.insumoNombre ? "Insumo" : "Otro")}
+                    </span>
+                  </td>
                   <td className="px-3 py-2">
                     {g.origen}
                     {g.insumoNombre && <span className="cc-chip" style={{ background: "#EDE7F6", color: "#5B4B8A", marginLeft: 6 }}>{fmt(g.litrosUsados, 1)} L</span>}
@@ -824,7 +873,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                 </tr>
               ))}
             </tbody>
-            <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}><td className="px-3 py-2" colSpan={4}>Total</td><td className="px-3 py-2 text-right cc-mono">{fmtUSD(gastos.reduce((s, g) => s + Number(g.monto || 0), 0))}</td><td colSpan={4}></td></tr></tfoot>
+            <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}><td className="px-3 py-2" colSpan={5}>Total</td><td className="px-3 py-2 text-right cc-mono">{fmtUSD(gastos.reduce((s, g) => s + Number(g.monto || 0), 0))}</td><td colSpan={4}></td></tr></tfoot>
           </table>
         </div>
       )}
@@ -1334,3 +1383,4 @@ function PapeleraView({ grupos }) {
     </div>
   );
 }
+
