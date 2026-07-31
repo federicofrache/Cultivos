@@ -26,6 +26,13 @@ const CATEGORIAS_GASTO = ["Servicio", "Renta", "Seguro", "Asesoramiento", "Otro"
 const GASTO_CAT_COLOR = {
   Insumo: "#5B4B8A", Servicio: "#8A6D3B", Renta: "#8C3D3D", Seguro: "#3D6E8C", Asesoramiento: "#5C7A4E", Otro: "#7A7267",
 };
+const PALETA_SOCIOS = ["#8A6D3B", "#3D6E8C", "#5C7A4E", "#8C3D3D", "#5B4B8A", "#C68A2E", "#4E7A7A", "#9E5B2E"];
+function colorPorTexto(texto) {
+  if (texto === "Sin asignar") return "#B5AF98";
+  let hash = 0;
+  for (let i = 0; i < texto.length; i++) hash = texto.charCodeAt(i) + ((hash << 5) - hash);
+  return PALETA_SOCIOS[Math.abs(hash) % PALETA_SOCIOS.length];
+}
 
 const fmt = (n, decimals = 0) => {
   if (n === null || n === undefined || isNaN(n)) return "-";
@@ -596,6 +603,39 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
           </div>
 
           <div className="cc-card p-4">
+            <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Aporte por socio</div>
+            {gastos.length === 0 ? (
+              <div style={{ fontSize: 13, color: "#8A8570" }}>Todavía no hay gastos cargados en este cultivo.</div>
+            ) : (
+              <div className="space-y-3">
+                {Object.entries(
+                  gastos.reduce((acc, g) => {
+                    const socio = g.socio && g.socio.trim() ? g.socio.trim() : "Sin asignar";
+                    acc[socio] = (acc[socio] || 0) + Number(g.monto || 0);
+                    return acc;
+                  }, {})
+                )
+                  .sort((a, b) => b[1] - a[1])
+                  .map(([socio, monto]) => {
+                    const pct = totalGastos ? (monto / totalGastos) * 100 : 0;
+                    const color = colorPorTexto(socio);
+                    return (
+                      <div key={socio}>
+                        <div className="flex items-center justify-between" style={{ fontSize: 13 }}>
+                          <span style={{ fontWeight: 600, color: socio === "Sin asignar" ? "#8A8570" : "#5A5647" }}>{socio}</span>
+                          <span className="cc-mono">{fmtUSD(monto)} <span style={{ color: "#8A8570" }}>({fmt(pct, 1)}%)</span></span>
+                        </div>
+                        <div style={{ background: "#EEEADA", borderRadius: 99, height: 8, marginTop: 4, overflow: "hidden" }}>
+                          <div style={{ width: `${Math.min(pct, 100)}%`, background: color, height: "100%", borderRadius: 99 }} />
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+
+          <div className="cc-card p-4">
             <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Conciliación de toneladas</div>
             <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px,1fr))" }}>
               <MiniStat label="Toneladas (ventas)" value={`${fmt(totalToneladasVentas, 2)} tn`} />
@@ -703,7 +743,7 @@ function MiniStat({ label, value }) {
 /* ------------------------------------------------------------------ */
 /*  Gastos                                                               */
 /* ------------------------------------------------------------------ */
-const emptyGasto = (email) => ({ origen: "", monto: "", detalle: "", fecha: "", usuario: email, categoriaGasto: "Servicio" });
+const emptyGasto = (email) => ({ origen: "", monto: "", detalle: "", fecha: "", usuario: email, categoriaGasto: "Servicio", socio: "" });
 
 function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, gastosTodos, superficie }) {
   const [form, setForm] = useState(emptyGasto(user.email));
@@ -726,6 +766,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
   const avisar = (texto) => { setMensaje(texto); setTimeout(() => setMensaje(""), 2500); };
 
   const origenesSugeridos = Array.from(new Set(gastos.map((g) => g.origen).filter(Boolean)));
+  const sociosSugeridos = Array.from(new Set(gastos.map((g) => g.socio).filter(Boolean)));
   const insumoElegido = stockInsumos.find((i) => i.nombre === insumoSel);
   const comprasDeEsteInsumo = insumosCompras.filter((c) => c.nombre === insumoSel);
   const litrosYaConsumidosPorOtros = gastosTodos
@@ -738,10 +779,10 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     setEditId(g.id);
     if (g.insumoNombre) {
       setTipo("insumo"); setInsumoSel(g.insumoNombre); setLitrosUsados(String(g.litrosUsados ?? ""));
-      setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email, categoriaGasto: "Insumo" });
+      setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email, categoriaGasto: "Insumo", socio: g.socio || "" });
     } else {
       setTipo("general"); setInsumoSel(""); setLitrosUsados("");
-      setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email, categoriaGasto: g.categoriaGasto || "Servicio" });
+      setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email, categoriaGasto: g.categoriaGasto || "Servicio", socio: g.socio || "" });
     }
     setArchivo(null); setPreview(null); setTranscripcion(""); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -750,10 +791,10 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     setEditId(null);
     if (g.insumoNombre) {
       setTipo("insumo"); setInsumoSel(g.insumoNombre); setLitrosUsados(String(g.litrosUsados ?? ""));
-      setForm({ origen: g.origen || "", monto: "", detalle: g.detalle || "", fecha: "", usuario: user.email, categoriaGasto: "Insumo" });
+      setForm({ origen: g.origen || "", monto: "", detalle: g.detalle || "", fecha: "", usuario: user.email, categoriaGasto: "Insumo", socio: g.socio || "" });
     } else {
       setTipo("general"); setInsumoSel(""); setLitrosUsados("");
-      setForm({ origen: g.origen || "", monto: String(g.monto ?? ""), detalle: g.detalle || "", fecha: "", usuario: user.email, categoriaGasto: g.categoriaGasto || "Servicio" });
+      setForm({ origen: g.origen || "", monto: String(g.monto ?? ""), detalle: g.detalle || "", fecha: "", usuario: user.email, categoriaGasto: g.categoriaGasto || "Servicio", socio: g.socio || "" });
     }
     setArchivo(null); setPreview(null); setTranscripcion(""); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -829,10 +870,10 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       datos = {
         origen: form.origen || insumoSel, monto: montoCalculado, detalle: form.detalle || `Consumo de ${insumoSel} — ${litrosUsados} L`,
         fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: insumoSel, litrosUsados: Number(litrosUsados), costoPorLitro: fifo.costoPromedioEfectivo,
-        categoriaGasto: "Insumo",
+        categoriaGasto: "Insumo", socio: form.socio || "",
       };
     } else {
-      datos = { origen: form.origen, monto: Number(form.monto), detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: null, litrosUsados: null, categoriaGasto: form.categoriaGasto || "Otro" };
+      datos = { origen: form.origen, monto: Number(form.monto), detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: null, litrosUsados: null, categoriaGasto: form.categoriaGasto || "Otro", socio: form.socio || "" };
     }
     if (archivo) { datos.facturaUrl = facturaUrl; datos.facturaNombre = facturaNombre; }
 
@@ -899,6 +940,11 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Litros usados</label><input className="cc-input" type="number" value={litrosUsados} onChange={(e) => setLitrosUsados(e.target.value)} /></div>
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Costo estimado (FIFO)</label><input className="cc-input" value={`U$S ${fmt(montoCalculado, 2)}`} disabled /></div>
+            <div>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Socio que aporta (opcional)</label>
+              <input className="cc-input" list="socios-gastos" value={form.socio} onChange={(e) => set("socio", e.target.value)} placeholder="Ej: Juan Pérez" />
+              <datalist id="socios-gastos">{sociosSugeridos.map((s) => <option key={s} value={s} />)}</datalist>
+            </div>
             <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 12, color: "#8A8570" }}>Detalle (opcional)</label><input className="cc-input" value={form.detalle} onChange={(e) => set("detalle", e.target.value)} placeholder={insumoSel ? `Consumo de ${insumoSel}` : ""} /></div>
           </div>
         ) : (
@@ -917,6 +963,11 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Monto (U$S)</label><input className="cc-input" type="number" value={form.monto} onChange={(e) => set("monto", e.target.value)} /></div>
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Usuario</label><input className="cc-input" value={form.usuario} disabled /></div>
+            <div>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Socio que aporta (opcional)</label>
+              <input className="cc-input" list="socios-gastos" value={form.socio} onChange={(e) => set("socio", e.target.value)} placeholder="Ej: Juan Pérez" />
+              <datalist id="socios-gastos">{sociosSugeridos.map((s) => <option key={s} value={s} />)}</datalist>
+            </div>
             <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 12, color: "#8A8570" }}>Detalle</label><input className="cc-input" value={form.detalle} onChange={(e) => set("detalle", e.target.value)} placeholder="Descripción del gasto" /></div>
           </div>
         )}
@@ -935,7 +986,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
           <div style={{ maxWidth: 320, flex: 1 }}>
             <input className="cc-input" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por origen, detalle o usuario..." />
           </div>
-          <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel(`gastos_${cultivo.nombre}`, [{ nombre: "Gastos", filas: gastos.map((g) => ({ Fecha: g.fecha, Categoría: g.categoriaGasto || (g.insumoNombre ? "Insumo" : "Otro"), Origen: g.origen, Detalle: g.detalle, Insumo: g.insumoNombre || "", "Litros usados": g.litrosUsados || "", Usuario: g.usuario, Monto: g.monto })) }])}>
+          <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel(`gastos_${cultivo.nombre}`, [{ nombre: "Gastos", filas: gastos.map((g) => ({ Fecha: g.fecha, Categoría: g.categoriaGasto || (g.insumoNombre ? "Insumo" : "Otro"), Origen: g.origen, Socio: g.socio || "", Detalle: g.detalle, Insumo: g.insumoNombre || "", "Litros usados": g.litrosUsados || "", Usuario: g.usuario, Monto: g.monto })) }])}>
             <Download size={17} /> Exportar Excel
           </button>
         </div>
@@ -944,7 +995,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       {gastos.length === 0 ? <EmptyState icon={Receipt} title="Sin gastos cargados" text="Cargá el primer gasto de este cultivo, escrito, por voz o desde una foto de factura." /> : (
         <div className="cc-card overflow-hidden">
           <table className="w-full" style={{ fontSize: 13 }}>
-            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Categoría</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Detalle</th><th className="px-3 py-2">Usuario</th><th className="px-3 py-2 text-right">Monto</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
+            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Categoría</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Socio</th><th className="px-3 py-2">Detalle</th><th className="px-3 py-2">Usuario</th><th className="px-3 py-2 text-right">Monto</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
             <tbody>
               {[...gastos]
                 .filter((g) => {
@@ -964,6 +1015,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                     {g.origen}
                     {g.insumoNombre && <span className="cc-chip" style={{ background: "#EDE7F6", color: "#5B4B8A", marginLeft: 6 }}>{fmt(g.litrosUsados, 1)} L</span>}
                   </td>
+                  <td className="px-3 py-2" style={{ color: "#5A5647" }}>{g.socio || "-"}</td>
                   <td className="px-3 py-2" style={{ color: "#5A5647" }}>{g.detalle}</td>
                   <td className="px-3 py-2" style={{ color: "#8A8570", fontSize: 12 }}>{g.usuario}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmtUSD(g.monto)}</td>
@@ -974,7 +1026,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                 </tr>
               ))}
             </tbody>
-            <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}><td className="px-3 py-2" colSpan={5}>Total</td><td className="px-3 py-2 text-right cc-mono">{fmtUSD(gastos.reduce((s, g) => s + Number(g.monto || 0), 0))}</td><td colSpan={4}></td></tr></tfoot>
+            <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}><td className="px-3 py-2" colSpan={6}>Total</td><td className="px-3 py-2 text-right cc-mono">{fmtUSD(gastos.reduce((s, g) => s + Number(g.monto || 0), 0))}</td><td colSpan={4}></td></tr></tfoot>
           </table>
         </div>
       )}
@@ -1168,6 +1220,7 @@ const emptyItemInsumo = () => ({ nombre: "", litros: "", precio: "" });
 function InsumosView({ compras, api, stockInsumos, user }) {
   const [fecha, setFecha] = useState("");
   const [origen, setOrigen] = useState("");
+  const [socio, setSocio] = useState("");
   const [items, setItems] = useState([emptyItemInsumo()]);
   const [archivo, setArchivo] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -1181,6 +1234,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
 
   const origenesSugeridos = Array.from(new Set(compras.map((c) => c.origen).filter(Boolean)));
   const nombresSugeridos = Array.from(new Set(compras.map((c) => c.nombre).filter(Boolean)));
+  const sociosSugeridos = Array.from(new Set(compras.map((c) => c.socio).filter(Boolean)));
 
   const setItem = (i, next) => setItems(items.map((it, idx) => (idx === i ? next : it)));
   const agregarItem = () => setItems([...items, emptyItemInsumo()]);
@@ -1227,9 +1281,9 @@ function InsumosView({ compras, api, stockInsumos, user }) {
     }
     await Promise.all(validos.map((it) => api.add({
       fecha, origen, nombre: it.nombre, litros: Number(it.litros), precio: Number(it.precio),
-      facturaUrl, facturaNombre, usuario: user.email,
+      facturaUrl, facturaNombre, usuario: user.email, socio: socio || "",
     })));
-    setFecha(""); setOrigen(""); setItems([emptyItemInsumo()]); setArchivo(null); setPreview(null); setImgB64(null);
+    setFecha(""); setOrigen(""); setSocio(""); setItems([emptyItemInsumo()]); setArchivo(null); setPreview(null); setImgB64(null);
     setMensaje("Compra guardada ✓"); setTimeout(() => setMensaje(""), 2500);
   };
 
@@ -1259,6 +1313,11 @@ function InsumosView({ compras, api, stockInsumos, user }) {
             <label style={{ fontSize: 12, color: "#8A8570" }}>Origen (proveedor)</label>
             <input className="cc-input" list="origenes-insumos" value={origen} onChange={(e) => setOrigen(e.target.value)} placeholder="Agromotora, Barraca..." />
             <datalist id="origenes-insumos">{origenesSugeridos.map((o) => <option key={o} value={o} />)}</datalist>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Socio que aporta (opcional)</label>
+            <input className="cc-input" list="socios-insumos" value={socio} onChange={(e) => setSocio(e.target.value)} placeholder="Ej: Juan Pérez" />
+            <datalist id="socios-insumos">{sociosSugeridos.map((s) => <option key={s} value={s} />)}</datalist>
           </div>
         </div>
 
@@ -1324,7 +1383,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
           <div className="flex items-center gap-2">
             {compras.length > 0 && <input className="cc-input" style={{ maxWidth: 280 }} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por insumo u origen..." />}
             {compras.length > 0 && (
-              <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel("compras_insumos", [{ nombre: "Compras", filas: compras.map((c) => ({ Fecha: c.fecha, Origen: c.origen, Insumo: c.nombre, Litros: c.litros, Precio: c.precio })) }, { nombre: "Stock", filas: stockInsumos.map((i) => ({ Insumo: i.nombre, Comprado: i.litrosComprados, Consumido: i.litrosConsumidos, Disponible: i.disponible, "Costo prom/L": i.costoPromedioPorLitro })) }])}>
+              <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel("compras_insumos", [{ nombre: "Compras", filas: compras.map((c) => ({ Fecha: c.fecha, Origen: c.origen, Socio: c.socio || "", Insumo: c.nombre, Litros: c.litros, Precio: c.precio })) }, { nombre: "Stock", filas: stockInsumos.map((i) => ({ Insumo: i.nombre, Comprado: i.litrosComprados, Consumido: i.litrosConsumidos, Disponible: i.disponible, "Costo prom/L": i.costoPromedioPorLitro })) }])}>
                 <Download size={17} /> Exportar Excel
               </button>
             )}
@@ -1333,7 +1392,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
         {compras.length === 0 ? <EmptyState icon={Receipt} title="Sin compras registradas" text="Registrá tu primera compra de insumos arriba." /> : (
           <div className="cc-card overflow-hidden">
             <table className="w-full" style={{ fontSize: 12.5 }}>
-              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Litros</th><th className="px-3 py-2 text-right">Precio</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
+              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Socio</th><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Litros</th><th className="px-3 py-2 text-right">Precio</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
               <tbody>
                 {[...compras]
                   .filter((c) => {
@@ -1345,6 +1404,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
                   <tr key={c.id} style={{ borderTop: "1px solid var(--line)" }}>
                     <td className="px-3 py-2 cc-mono">{c.fecha}</td>
                     <td className="px-3 py-2">{c.origen}</td>
+                    <td className="px-3 py-2" style={{ color: "#5A5647" }}>{c.socio || "-"}</td>
                     <td className="px-3 py-2">{c.nombre}</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmt(c.litros, 1)} L</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmtUSD(c.precio)}</td>
@@ -1357,6 +1417,38 @@ function InsumosView({ compras, api, stockInsumos, user }) {
           </div>
         )}
       </div>
+
+      {compras.length > 0 && (
+        <div>
+          <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Aporte por socio (insumos)</div>
+          <div className="cc-card p-4 space-y-3">
+            {Object.entries(
+              compras.reduce((acc, c) => {
+                const s = c.socio && c.socio.trim() ? c.socio.trim() : "Sin asignar";
+                acc[s] = (acc[s] || 0) + Number(c.precio || 0);
+                return acc;
+              }, {})
+            )
+              .sort((a, b) => b[1] - a[1])
+              .map(([s, monto]) => {
+                const totalCompras = compras.reduce((sum, c) => sum + Number(c.precio || 0), 0);
+                const pct = totalCompras ? (monto / totalCompras) * 100 : 0;
+                const color = colorPorTexto(s);
+                return (
+                  <div key={s}>
+                    <div className="flex items-center justify-between" style={{ fontSize: 13 }}>
+                      <span style={{ fontWeight: 600, color: s === "Sin asignar" ? "#8A8570" : "#5A5647" }}>{s}</span>
+                      <span className="cc-mono">{fmtUSD(monto)} <span style={{ color: "#8A8570" }}>({fmt(pct, 1)}%)</span></span>
+                    </div>
+                    <div style={{ background: "#EEEADA", borderRadius: 99, height: 8, marginTop: 4, overflow: "hidden" }}>
+                      <div style={{ width: `${Math.min(pct, 100)}%`, background: color, height: "100%", borderRadius: 99 }} />
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
