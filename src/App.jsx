@@ -232,8 +232,8 @@ export default function App() {
 
   // Helper genérico: en vez de borrar, marca como eliminado (papelera)
   const softDeleteApi = (coleccion) => ({
-    add: (data) => addDoc(collection(db, coleccion), data),
-    update: (id, data) => updateDoc(doc(db, coleccion, id), data),
+    add: (data) => addDoc(collection(db, coleccion), { ...data, creadoPor: user.email, creadoEn: new Date().toISOString() }),
+    update: (id, data) => updateDoc(doc(db, coleccion, id), { ...data, modificadoPor: user.email, modificadoEn: new Date().toISOString() }),
     remove: (id) => updateDoc(doc(db, coleccion, id), { eliminado: true, eliminadoEn: new Date().toISOString(), eliminadoPor: user.email }),
     restaurar: (id) => updateDoc(doc(db, coleccion, id), { eliminado: false, eliminadoEn: null, eliminadoPor: null }),
     eliminarDefinitivo: (id) => deleteDoc(doc(db, coleccion, id)),
@@ -317,7 +317,7 @@ export default function App() {
         {nav.view === "insumos" && <InsumosView compras={insumosCompras} api={insumosApi} stockInsumos={stockInsumos} user={user} />}
 
         {nav.view === "resumen_general" && (
-          <ResumenGeneralView campanias={campanias} cultivos={cultivos} gastos={gastosTodos} ventas={ventasTodas}
+          <ResumenGeneralView campanias={campanias} cultivos={cultivos} gastos={gastosTodos} ventas={ventasTodas} lotes={lotes} insumosCompras={insumosCompras}
             onOpenCultivo={(cultivoId, campaniaId) => setNav({ view: "cultivo", campaniaId, cultivoId })} />
         )}
 
@@ -493,16 +493,16 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
   }, [cultivo.id]);
 
   const gastosApi = {
-    add: (d) => addDoc(collection(db, "gastos"), d),
-    update: (id, d) => updateDoc(doc(db, "gastos", id), d),
+    add: (d) => addDoc(collection(db, "gastos"), { ...d, creadoPor: user.email, creadoEn: new Date().toISOString() }),
+    update: (id, d) => updateDoc(doc(db, "gastos", id), { ...d, modificadoPor: user.email, modificadoEn: new Date().toISOString() }),
     remove: (id) => updateDoc(doc(db, "gastos", id), { eliminado: true, eliminadoEn: new Date().toISOString(), eliminadoPor: user.email }),
   };
   const ventasApi = {
-    add: (d) => addDoc(collection(db, "ventas"), d),
+    add: (d) => addDoc(collection(db, "ventas"), { ...d, creadoPor: user.email, creadoEn: new Date().toISOString() }),
     remove: (id) => updateDoc(doc(db, "ventas", id), { eliminado: true, eliminadoEn: new Date().toISOString(), eliminadoPor: user.email }),
   };
   const remitosApi = {
-    add: (d) => addDoc(collection(db, "remitos"), d),
+    add: (d) => addDoc(collection(db, "remitos"), { ...d, creadoPor: user.email, creadoEn: new Date().toISOString() }),
     remove: (id) => updateDoc(doc(db, "remitos", id), { eliminado: true, eliminadoEn: new Date().toISOString(), eliminadoPor: user.email }),
   };
 
@@ -549,6 +549,8 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
             <StatCard label="Total ingresos (ventas)" value={fmtUSD(totalIngresos)} icon={DollarSign} color="var(--soil-light)" />
             <StatCard label="Margen" value={fmtUSD(totalIngresos - totalGastos)} icon={totalIngresos - totalGastos >= 0 ? TrendingUp : TrendingDown} color={totalIngresos - totalGastos >= 0 ? "var(--soil-light)" : "var(--rust)"} />
           </div>
+
+          <PresupuestoCard cultivo={cultivo} cultivosApi={cultivosApi} totalGastos={totalGastos} />
 
           {!superficie ? (
             <div className="flex items-start gap-2" style={{ background: "#FDF3E0", border: "1px solid var(--gold)", borderRadius: 8, padding: "10px 12px" }}>
@@ -728,6 +730,62 @@ function CultivoLotesTab({ cultivo, lotes, lotesApi, cultivosApi, superficie }) 
 }
 
 
+/* ------------------------------------------------------------------ */
+/*  Presupuesto vs. real                                                */
+/* ------------------------------------------------------------------ */
+function PresupuestoCard({ cultivo, cultivosApi, totalGastos }) {
+  const [editando, setEditando] = useState(false);
+  const [valor, setValor] = useState(cultivo.presupuesto ?? "");
+
+  const guardar = async () => {
+    await cultivosApi.update(cultivo.id, { presupuesto: valor ? Number(valor) : null });
+    setEditando(false);
+  };
+
+  if (!cultivo.presupuesto && !editando) {
+    return (
+      <div className="cc-card p-4 flex items-center justify-between flex-wrap gap-2">
+        <div style={{ fontSize: 13, color: "#8A8570" }}>Todavía no cargaste un presupuesto estimado para este cultivo.</div>
+        <button className="cc-btn cc-btn-ghost" onClick={() => setEditando(true)}><Plus size={17} /> Cargar presupuesto</button>
+      </div>
+    );
+  }
+
+  if (editando) {
+    return (
+      <div className="cc-card p-4">
+        <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Presupuesto estimado (U$S)</div>
+        <div className="flex gap-2 items-end flex-wrap">
+          <div style={{ width: 180 }}><input className="cc-input" type="number" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="Ej: 45000" /></div>
+          <button className="cc-btn cc-btn-primary" onClick={guardar}><CheckCircle2 size={17} /> Guardar</button>
+          <button className="cc-btn cc-btn-ghost" onClick={() => { setEditando(false); setValor(cultivo.presupuesto ?? ""); }}><X size={17} /> Cancelar</button>
+        </div>
+      </div>
+    );
+  }
+
+  const pct = cultivo.presupuesto ? (totalGastos / cultivo.presupuesto) * 100 : 0;
+  const color = pct >= 100 ? "var(--rust)" : pct >= 80 ? "var(--gold)" : "var(--soil-light)";
+
+  return (
+    <div className="cc-card p-4">
+      <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <div className="cc-h" style={{ fontSize: 15, fontWeight: 600 }}>Presupuesto vs. real</div>
+        <button style={{ fontSize: 12, color: "var(--frost)" }} onClick={() => setEditando(true)}>Editar</button>
+      </div>
+      <div className="flex items-center justify-between" style={{ fontSize: 13 }}>
+        <span className="cc-mono">{fmtUSD(totalGastos)} gastado</span>
+        <span className="cc-mono" style={{ color: "#8A8570" }}>de {fmtUSD(cultivo.presupuesto)} ({fmt(pct, 0)}%)</span>
+      </div>
+      <div style={{ background: "#EEEADA", borderRadius: 99, height: 10, marginTop: 6, overflow: "hidden" }}>
+        <div style={{ width: `${Math.min(pct, 100)}%`, background: color, height: "100%", borderRadius: 99 }} />
+      </div>
+      {pct >= 100 && <div style={{ fontSize: 12, color: "var(--rust)", marginTop: 6 }}>Ya superaste el presupuesto estimado.</div>}
+      {pct >= 80 && pct < 100 && <div style={{ fontSize: 12, color: "#7A5A1E", marginTop: 6 }}>Te estás acercando al presupuesto estimado.</div>}
+    </div>
+  );
+}
+
 function StatCard({ label, value, icon: Icon, color }) {
   return (
     <div className="cc-card p-4 flex items-center gap-3">
@@ -751,8 +809,8 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
   const [tipo, setTipo] = useState("general"); // "general" | "insumo"
   const [insumoSel, setInsumoSel] = useState("");
   const [litrosUsados, setLitrosUsados] = useState("");
-  const [archivo, setArchivo] = useState(null);
-  const [preview, setPreview] = useState(null);
+  const [archivos, setArchivos] = useState([]);
+  const [previews, setPreviews] = useState([]);
   const [subiendo, setSubiendo] = useState(false);
   const [extrayendo, setExtrayendo] = useState(false);
   const [grabando, setGrabando] = useState(false);
@@ -784,7 +842,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       setTipo("general"); setInsumoSel(""); setLitrosUsados("");
       setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email, categoriaGasto: g.categoriaGasto || "Servicio", socio: g.socio || "" });
     }
-    setArchivo(null); setPreview(null); setTranscripcion(""); setError("");
+    setArchivos([]); setPreviews([]); setTranscripcion(""); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const duplicar = (g) => {
@@ -796,28 +854,33 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       setTipo("general"); setInsumoSel(""); setLitrosUsados("");
       setForm({ origen: g.origen || "", monto: String(g.monto ?? ""), detalle: g.detalle || "", fecha: "", usuario: user.email, categoriaGasto: g.categoriaGasto || "Servicio", socio: g.socio || "" });
     }
-    setArchivo(null); setPreview(null); setTranscripcion(""); setError("");
+    setArchivos([]); setPreviews([]); setTranscripcion(""); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const cancelarEdicion = () => {
-    setEditId(null); setForm(emptyGasto(user.email)); setArchivo(null); setPreview(null); setTranscripcion("");
+    setEditId(null); setForm(emptyGasto(user.email)); setArchivos([]); setPreviews([]); setTranscripcion("");
     setTipo("general"); setInsumoSel(""); setLitrosUsados("");
   };
 
   const onFile = (e) => {
-    const f = e.target.files[0];
-    if (!f) return;
-    setArchivo(f);
-    if (f.type.startsWith("image/")) setPreview(URL.createObjectURL(f)); else setPreview(null);
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setArchivos(files);
+    setPreviews(files.map((f) => (f.type.startsWith("image/") ? URL.createObjectURL(f) : null)));
+  };
+  const quitarArchivo = (i) => {
+    setArchivos(archivos.filter((_, idx) => idx !== i));
+    setPreviews(previews.filter((_, idx) => idx !== i));
   };
 
   const extraerDeFactura = async () => {
-    if (!archivo || !archivo.type.startsWith("image/")) { setError("La extracción automática funciona con fotos (JPG/PNG) de la factura."); return; }
+    const primera = archivos[0];
+    if (!primera || !primera.type.startsWith("image/")) { setError("La extracción automática funciona con fotos (JPG/PNG) — toma la primera imagen adjunta."); return; }
     setExtrayendo(true); setError("");
     try {
-      const b64 = await fileToBase64(archivo);
+      const b64 = await fileToBase64(primera);
       const data = await askClaudeJSON([
-        { type: "image", source: { type: "base64", media_type: archivo.type, data: b64 } },
+        { type: "image", source: { type: "base64", media_type: primera.type, data: b64 } },
         { type: "text", text: `Esta imagen es una factura de un proveedor agropecuario uruguayo. Devolvé SOLO un JSON (sin texto extra, sin markdown) con: {"origen":"nombre del proveedor/emisor","monto":number (total de la factura en dólares),"detalle":"resumen breve de qué incluye la factura, 1 línea","fecha":"YYYY-MM-DD o vacío"}.` },
       ]);
       setForm({ ...form, ...data, usuario: user.email });
@@ -852,16 +915,19 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       }
     } else if (!form.origen || !form.monto || !form.fecha) { alert("Completá al menos origen, monto y fecha."); return; }
 
-    let facturaUrl, facturaNombre;
-    if (archivo) {
+    let facturaUrls, facturaNombres;
+    if (archivos.length) {
       setSubiendo(true);
       try {
-        const path = `facturas/${cultivo.id}/${Date.now()}_${archivo.name}`;
-        const r = ref(storage, path);
-        await uploadBytes(r, archivo);
-        facturaUrl = await getDownloadURL(r);
-        facturaNombre = archivo.name;
-      } catch (e) { alert("No se pudo subir la factura adjunta, pero se guardará el gasto sin el archivo."); }
+        const subidos = await Promise.all(archivos.map(async (a) => {
+          const path = `facturas/${cultivo.id}/${Date.now()}_${a.name}`;
+          const r = ref(storage, path);
+          await uploadBytes(r, a);
+          return { url: await getDownloadURL(r), nombre: a.name };
+        }));
+        facturaUrls = subidos.map((s) => s.url);
+        facturaNombres = subidos.map((s) => s.nombre);
+      } catch (e) { alert("No se pudieron subir todas las facturas adjuntas, pero se guardará el gasto."); }
       setSubiendo(false);
     }
 
@@ -875,15 +941,15 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     } else {
       datos = { origen: form.origen, monto: Number(form.monto), detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: null, litrosUsados: null, categoriaGasto: form.categoriaGasto || "Otro", socio: form.socio || "" };
     }
-    if (archivo) { datos.facturaUrl = facturaUrl; datos.facturaNombre = facturaNombre; }
+    if (archivos.length) { datos.facturaUrls = facturaUrls; datos.facturaNombres = facturaNombres; }
 
     if (editId) {
       await api.update(editId, datos);
     } else {
-      await api.add({ cultivoId: cultivo.id, ...datos, facturaUrl: facturaUrl || null, facturaNombre: facturaNombre || null });
+      await api.add({ cultivoId: cultivo.id, ...datos, facturaUrls: facturaUrls || [], facturaNombres: facturaNombres || [] });
     }
     const eraEdicion = !!editId;
-    setEditId(null); setForm(emptyGasto(user.email)); setArchivo(null); setPreview(null); setTranscripcion("");
+    setEditId(null); setForm(emptyGasto(user.email)); setArchivos([]); setPreviews([]); setTranscripcion("");
     setTipo("general"); setInsumoSel(""); setLitrosUsados("");
     avisar(eraEdicion ? "Cambios guardados ✓" : "Gasto guardado ✓");
   };
@@ -900,12 +966,22 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
 
       <div className="cc-card p-4 space-y-4">
         <div className="flex flex-wrap gap-2">
-          <label className="cc-btn cc-btn-ghost" style={{ cursor: "pointer" }}><Paperclip size={17} /> {archivo ? archivo.name : "Adjuntar factura (imagen o PDF)"}<input type="file" accept="image/*,.pdf" capture="environment" onChange={onFile} style={{ display: "none" }} /></label>
-          {archivo?.type?.startsWith("image/") && <button className="cc-btn cc-btn-ghost" onClick={extraerDeFactura} disabled={extrayendo}>{extrayendo ? <Loader2 size={17} className="animate-spin" /> : <Camera size={17} />} Extraer datos con IA</button>}
+          <label className="cc-btn cc-btn-ghost" style={{ cursor: "pointer" }}><Paperclip size={17} /> {archivos.length ? `${archivos.length} factura(s) elegida(s)` : "Adjuntar factura(s) (imagen o PDF)"}<input type="file" accept="image/*,.pdf" multiple onChange={onFile} style={{ display: "none" }} /></label>
+          {archivos[0]?.type?.startsWith("image/") && <button className="cc-btn cc-btn-ghost" onClick={extraerDeFactura} disabled={extrayendo}>{extrayendo ? <Loader2 size={17} className="animate-spin" /> : <Camera size={17} />} Extraer datos con IA (1ra foto)</button>}
           <button className="cc-btn" style={{ background: grabando ? "var(--rust)" : "var(--soil)", color: "#fff" }} onClick={grabando ? detener : grabar}><Mic size={17} /> {grabando ? "Detener" : "Dictar por voz"}</button>
         </div>
 
-        {preview && <img src={preview} alt="Factura" style={{ maxWidth: 140, borderRadius: 8, border: "1px solid var(--line)" }} />}
+        {archivos.length > 0 && (
+          <div className="flex flex-wrap gap-2">
+            {archivos.map((a, i) => (
+              <div key={i} className="flex items-center gap-2" style={{ background: "#F7F5EC", border: "1px solid var(--line)", borderRadius: 8, padding: "6px 10px" }}>
+                {previews[i] ? <img src={previews[i]} alt={a.name} style={{ width: 32, height: 32, objectFit: "cover", borderRadius: 4 }} /> : <FileText size={17} color="var(--frost)" />}
+                <span style={{ fontSize: 12 }}>{a.name}</span>
+                <button onClick={() => quitarArchivo(i)}><X size={15} color="var(--rust)" /></button>
+              </div>
+            ))}
+          </div>
+        )}
 
         {(transcripcion || grabando) && (
           <div>
@@ -971,7 +1047,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
             <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 12, color: "#8A8570" }}>Detalle</label><input className="cc-input" value={form.detalle} onChange={(e) => set("detalle", e.target.value)} placeholder="Descripción del gasto" /></div>
           </div>
         )}
-        {editId && archivo === null && <div style={{ fontSize: 12, color: "#8A8570" }}>La factura adjunta actual se mantiene salvo que subas una nueva arriba.</div>}
+        {editId && archivos.length === 0 && <div style={{ fontSize: 12, color: "#8A8570" }}>Las facturas adjuntas actuales se mantienen salvo que subas nuevas arriba.</div>}
         <div className="flex gap-2 items-center flex-wrap">
           <button className="cc-btn cc-btn-primary" onClick={guardar} disabled={subiendo}>
             {subiendo ? <Loader2 size={18} className="animate-spin" /> : editId ? <Pencil size={18} /> : <Plus size={18} />} {editId ? "Guardar cambios" : "Guardar gasto"}
@@ -1017,9 +1093,18 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                   </td>
                   <td className="px-3 py-2" style={{ color: "#5A5647" }}>{g.socio || "-"}</td>
                   <td className="px-3 py-2" style={{ color: "#5A5647" }}>{g.detalle}</td>
-                  <td className="px-3 py-2" style={{ color: "#8A8570", fontSize: 12 }}>{g.usuario}</td>
+                  <td className="px-3 py-2" style={{ color: "#8A8570", fontSize: 12 }}>
+                    {g.usuario}
+                    {g.modificadoPor && g.modificadoPor !== g.usuario && <div style={{ fontStyle: "italic", fontSize: 10.5 }}>editado por {g.modificadoPor}</div>}
+                  </td>
                   <td className="px-3 py-2 text-right cc-mono">{fmtUSD(g.monto)}</td>
-                  <td className="px-3 py-2">{g.facturaUrl && <a href={g.facturaUrl} target="_blank" rel="noreferrer"><FileText size={17} color="var(--frost)" /></a>}</td>
+                  <td className="px-3 py-2">
+                    <div className="flex gap-1">
+                      {(g.facturaUrls && g.facturaUrls.length ? g.facturaUrls : g.facturaUrl ? [g.facturaUrl] : []).map((u, i) => (
+                        <a key={i} href={u} target="_blank" rel="noreferrer"><FileText size={17} color="var(--frost)" /></a>
+                      ))}
+                    </div>
+                  </td>
                   <td className="px-3 py-2 text-right"><button onClick={() => duplicar(g)} title="Duplicar"><Copy size={16} color="#8A8570" /></button></td>
                   <td className="px-3 py-2 text-right"><button onClick={() => editar(g)} title="Editar"><Pencil size={16} color="var(--frost)" /></button></td>
                   <td className="px-3 py-2 text-right"><button onClick={() => eliminar(g.id)} title="Eliminar"><Trash2 size={16} color="var(--rust)" /></button></td>
@@ -1456,17 +1541,19 @@ function InsumosView({ compras, api, stockInsumos, user }) {
 /* ------------------------------------------------------------------ */
 /*  Resumen general (todas las campañas y cultivos)                     */
 /* ------------------------------------------------------------------ */
-function ResumenGeneralView({ campanias, cultivos, gastos, ventas, onOpenCultivo }) {
+function ResumenGeneralView({ campanias, cultivos, gastos, ventas, lotes, insumosCompras, onOpenCultivo }) {
   const filas = cultivos.map((c) => {
     const campania = campanias.find((cp) => cp.id === c.campaniaId);
     const gastosCultivo = gastos.filter((g) => g.cultivoId === c.id);
     const ventasCultivo = ventas.filter((v) => v.cultivoId === c.id);
     const totalGastos = gastosCultivo.reduce((s, g) => s + Number(g.monto || 0), 0);
     const totalIngresos = ventasCultivo.reduce((s, v) => s + Number(v.toneladas || 0) * Number(v.dolaresPorTonelada || 0), 0);
+    const superficie = lotes.filter((l) => (c.loteIds || []).includes(l.id)).reduce((s, l) => s + Number(l.hectareas || 0), 0);
     return {
       cultivoId: c.id, campaniaId: c.campaniaId, cultivoNombre: c.nombre, categoria: c.categoria,
       campaniaNombre: campania ? (campania.nombre || campania.anio) : "—", anio: campania?.anio || 0,
-      totalGastos, totalIngresos, margen: totalIngresos - totalGastos,
+      superficie, totalGastos, totalIngresos, margen: totalIngresos - totalGastos,
+      costoPorHa: superficie ? totalGastos / superficie : null, margenPorHa: superficie ? (totalIngresos - totalGastos) / superficie : null,
     };
   }).sort((a, b) => b.anio - a.anio || a.cultivoNombre.localeCompare(b.cultivoNombre));
 
@@ -1474,10 +1561,27 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, onOpenCultivo
   const totalIngresosGeneral = filas.reduce((s, f) => s + f.totalIngresos, 0);
   const margenGeneral = totalIngresosGeneral - totalGastosGeneral;
 
-  const exportar = () => exportarExcel("resumen_general_campo_costo", [{
-    nombre: "Resumen",
-    filas: filas.map((f) => ({ Campaña: f.campaniaNombre, Cultivo: f.cultivoNombre, Categoría: f.categoria, "Total gastos": f.totalGastos, "Total ingresos": f.totalIngresos, Margen: f.margen })),
-  }]);
+  // Comparar el mismo cultivo (por nombre) entre distintas campañas/años
+  const porCultivoNombre = {};
+  filas.forEach((f) => { (porCultivoNombre[f.cultivoNombre] ||= []).push(f); });
+  const comparables = Object.entries(porCultivoNombre).filter(([, arr]) => arr.length > 1);
+
+  // Aporte por socio, combinando gastos de todos los cultivos + compras de insumos
+  const aportesSocio = {};
+  gastos.forEach((g) => {
+    const s = g.socio && g.socio.trim() ? g.socio.trim() : "Sin asignar";
+    aportesSocio[s] = (aportesSocio[s] || 0) + Number(g.monto || 0);
+  });
+  insumosCompras.forEach((c) => {
+    const s = c.socio && c.socio.trim() ? c.socio.trim() : "Sin asignar";
+    aportesSocio[s] = (aportesSocio[s] || 0) + Number(c.precio || 0);
+  });
+  const totalAportes = Object.values(aportesSocio).reduce((s, v) => s + v, 0);
+
+  const exportar = () => exportarExcel("resumen_general_campo_costo", [
+    { nombre: "Resumen", filas: filas.map((f) => ({ Campaña: f.campaniaNombre, Cultivo: f.cultivoNombre, Categoría: f.categoria, "Superficie (ha)": f.superficie, "Total gastos": f.totalGastos, "Total ingresos": f.totalIngresos, Margen: f.margen, "Gasto/ha": f.costoPorHa, "Margen/ha": f.margenPorHa })) },
+    { nombre: "Aporte por socio", filas: Object.entries(aportesSocio).map(([socio, monto]) => ({ Socio: socio, Monto: monto, "% del total": totalAportes ? (monto / totalAportes) * 100 : 0 })) },
+  ]);
 
   if (!cultivos.length) {
     return <EmptyState icon={LayoutDashboard} title="Todavía no hay datos para resumir" text="Cuando crees campañas y cultivos con gastos e ingresos, acá vas a ver el resumen de todo junto." />;
@@ -1502,7 +1606,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, onOpenCultivo
       <div className="cc-card overflow-hidden">
         <table className="w-full" style={{ fontSize: 13 }}>
           <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}>
-            <th className="px-3 py-2">Campaña</th><th className="px-3 py-2">Cultivo</th>
+            <th className="px-3 py-2">Campaña</th><th className="px-3 py-2">Cultivo</th><th className="px-3 py-2 text-right">Ha</th>
             <th className="px-3 py-2 text-right">Gastos</th><th className="px-3 py-2 text-right">Ingresos</th><th className="px-3 py-2 text-right">Margen</th>
           </tr></thead>
           <tbody>
@@ -1513,6 +1617,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, onOpenCultivo
                   <span className="cc-chip" style={{ background: CAT_COLOR[f.categoria] + "22", color: CAT_COLOR[f.categoria], marginRight: 6 }}>{f.categoria === "verano" ? "V" : "I"}</span>
                   {f.cultivoNombre}
                 </td>
+                <td className="px-3 py-2 text-right cc-mono">{f.superficie ? fmt(f.superficie, 1) : "-"}</td>
                 <td className="px-3 py-2 text-right cc-mono">{fmtUSD(f.totalGastos)}</td>
                 <td className="px-3 py-2 text-right cc-mono">{fmtUSD(f.totalIngresos)}</td>
                 <td className="px-3 py-2 text-right cc-mono" style={{ color: f.margen >= 0 ? "var(--soil-light)" : "var(--rust)", fontWeight: 700 }}>{fmtUSD(f.margen)}</td>
@@ -1520,13 +1625,67 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, onOpenCultivo
             ))}
           </tbody>
           <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}>
-            <td className="px-3 py-2" colSpan={2}>Total</td>
+            <td className="px-3 py-2" colSpan={3}>Total</td>
             <td className="px-3 py-2 text-right cc-mono">{fmtUSD(totalGastosGeneral)}</td>
             <td className="px-3 py-2 text-right cc-mono">{fmtUSD(totalIngresosGeneral)}</td>
             <td className="px-3 py-2 text-right cc-mono">{fmtUSD(margenGeneral)}</td>
           </tr></tfoot>
         </table>
       </div>
+
+      {comparables.length > 0 && (
+        <div>
+          <div className="cc-h" style={{ fontSize: 17, fontWeight: 600, marginBottom: 4 }}>Comparar entre campañas</div>
+          <div style={{ fontSize: 12.5, color: "#8A8570", marginBottom: 10 }}>El mismo cultivo, año a año.</div>
+          <div className="space-y-4">
+            {comparables.map(([nombre, arr]) => (
+              <div key={nombre} className="cc-card overflow-hidden">
+                <div className="px-3 py-2" style={{ background: "#EEEADA", fontWeight: 600, fontSize: 13.5 }}>{nombre}</div>
+                <table className="w-full" style={{ fontSize: 13 }}>
+                  <thead><tr style={{ textAlign: "left", color: "#8A8570" }}>
+                    <th className="px-3 py-2">Campaña</th><th className="px-3 py-2 text-right">Ha</th>
+                    <th className="px-3 py-2 text-right">Gasto/ha</th><th className="px-3 py-2 text-right">Margen/ha</th><th className="px-3 py-2 text-right">Margen total</th>
+                  </tr></thead>
+                  <tbody>
+                    {[...arr].sort((a, b) => b.anio - a.anio).map((f) => (
+                      <tr key={f.cultivoId} style={{ borderTop: "1px solid var(--line)", cursor: "pointer" }} onClick={() => onOpenCultivo(f.cultivoId, f.campaniaId)}>
+                        <td className="px-3 py-2">{f.campaniaNombre}</td>
+                        <td className="px-3 py-2 text-right cc-mono">{f.superficie ? fmt(f.superficie, 1) : "-"}</td>
+                        <td className="px-3 py-2 text-right cc-mono">{f.costoPorHa !== null ? fmtUSD(f.costoPorHa) : "-"}</td>
+                        <td className="px-3 py-2 text-right cc-mono" style={{ color: f.margenPorHa >= 0 ? "var(--soil-light)" : "var(--rust)" }}>{f.margenPorHa !== null ? fmtUSD(f.margenPorHa) : "-"}</td>
+                        <td className="px-3 py-2 text-right cc-mono" style={{ fontWeight: 700, color: f.margen >= 0 ? "var(--soil-light)" : "var(--rust)" }}>{fmtUSD(f.margen)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {totalAportes > 0 && (
+        <div>
+          <div className="cc-h" style={{ fontSize: 17, fontWeight: 600, marginBottom: 10 }}>Aporte por socio (todo junto)</div>
+          <div className="cc-card p-4 space-y-3">
+            {Object.entries(aportesSocio).sort((a, b) => b[1] - a[1]).map(([socio, monto]) => {
+              const pct = totalAportes ? (monto / totalAportes) * 100 : 0;
+              const color = colorPorTexto(socio);
+              return (
+                <div key={socio}>
+                  <div className="flex items-center justify-between" style={{ fontSize: 13 }}>
+                    <span style={{ fontWeight: 600, color: socio === "Sin asignar" ? "#8A8570" : "#5A5647" }}>{socio}</span>
+                    <span className="cc-mono">{fmtUSD(monto)} <span style={{ color: "#8A8570" }}>({fmt(pct, 1)}%)</span></span>
+                  </div>
+                  <div style={{ background: "#EEEADA", borderRadius: 99, height: 8, marginTop: 4, overflow: "hidden" }}>
+                    <div style={{ width: `${Math.min(pct, 100)}%`, background: color, height: "100%", borderRadius: 99 }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
