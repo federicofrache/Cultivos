@@ -22,9 +22,9 @@ import {
 const CULTIVOS_VERANO = ["Soja", "Maíz", "Sorgo"];
 const CULTIVOS_INVIERNO = ["Colza", "Carinata", "Trigo", "Cebada", "Lupino", "Camelina"];
 const CAT_COLOR = { verano: "#C68A2E", invierno: "#3D6E8C" };
-const CATEGORIAS_GASTO = ["Servicio", "Renta", "Seguro", "Asesoramiento", "Otro"];
+const CATEGORIAS_GASTO = ["Insumos", "Servicio", "Renta", "Seguro", "Asesoramiento", "Otro"];
 const GASTO_CAT_COLOR = {
-  Insumo: "#5B4B8A", Servicio: "#8A6D3B", Renta: "#8C3D3D", Seguro: "#3D6E8C", Asesoramiento: "#5C7A4E", Otro: "#7A7267",
+  Insumo: "#5B4B8A", Insumos: "#5B4B8A", Servicio: "#8A6D3B", Renta: "#8C3D3D", Seguro: "#3D6E8C", Asesoramiento: "#5C7A4E", Otro: "#7A7267",
 };
 const PALETA_SOCIOS = ["#8A6D3B", "#3D6E8C", "#5C7A4E", "#8C3D3D", "#5B4B8A", "#C68A2E", "#4E7A7A", "#9E5B2E"];
 function colorPorTexto(texto) {
