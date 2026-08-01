@@ -276,7 +276,7 @@ export default function App() {
       <header style={{ background: "var(--soil)" }} className="px-6 py-4">
         <div className="flex items-center justify-between max-w-6xl mx-auto">
           <button className="flex items-center gap-3" onClick={() => setNav({ view: "campanias", campaniaId: null, cultivoId: null })}>
-            <Wheat color="var(--gold)" size={28} />
+            <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 40, height: 40, borderRadius: "50%", background: "rgba(198,138,46,0.18)" }}><Wheat color="var(--gold)" size={22} /></span>
             <div style={{ textAlign: "left" }}>
               <div className="cc-h" style={{ color: "#fff", fontSize: 20, fontWeight: 600, lineHeight: 1 }}>Campo & Costo</div>
               <div style={{ color: "#B8C2AC", fontSize: 12 }}>Campañas · Cultivos · Gastos e Ingresos</div>
@@ -284,16 +284,16 @@ export default function App() {
           </button>
           <div className="flex items-center gap-3">
             <button onClick={() => setNav({ view: "resumen_general", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
-              <LayoutDashboard size={16} /> Resumen general
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: "var(--frost)" }}><LayoutDashboard size={13} color="#fff" /></span> Resumen general
             </button>
             <button onClick={() => setNav({ view: "insumos", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
-              <Package size={16} /> Insumos
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: "var(--gold)" }}><Package size={13} color="#fff" /></span> Insumos
             </button>
             <button onClick={() => setNav({ view: "lotes", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
-              <MapPin size={16} /> Lotes
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: "var(--soil-light)" }}><MapPin size={13} color="#fff" /></span> Lotes
             </button>
             <button onClick={() => setNav({ view: "papelera", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
-              <Trash size={16} /> Papelera
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: "var(--rust)" }}><Trash size={13} color="#fff" /></span> Papelera
             </button>
             <span style={{ color: "#D8DECB", fontSize: 12.5 }}>{user.email}</span>
             <button onClick={() => signOut(auth)} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}><LogOut size={16} /> Salir</button>
