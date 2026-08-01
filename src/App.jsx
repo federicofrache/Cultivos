@@ -219,7 +219,10 @@ export default function App() {
 
   // Versiones "activas" (sin lo que está en la papelera), que usa el resto de la app
   const campanias = campaniasRaw.filter((x) => !x.eliminado);
-  const cultivos = cultivosRaw.filter((x) => !x.eliminado);
+  const campaniaIdsActivas = new Set(campanias.map((c) => c.id));
+  // Además de no estar eliminado, un cultivo solo cuenta como activo si su campaña también sigue activa
+  // (evita cultivos "huérfanos" en Resumen general cuando se borró la campaña sin borrar sus cultivos)
+  const cultivos = cultivosRaw.filter((x) => !x.eliminado && campaniaIdsActivas.has(x.campaniaId));
   const lotes = lotesRaw.filter((x) => !x.eliminado);
   const insumosCompras = insumosComprasRaw.filter((x) => !x.eliminado);
   const gastosTodos = gastosRaw.filter((x) => !x.eliminado);
@@ -304,7 +307,7 @@ export default function App() {
       <main className="max-w-6xl mx-auto px-6 py-6">
         <Breadcrumb nav={nav} setNav={setNav} campania={campaniaActual} cultivo={cultivoActual} />
 
-        {nav.view === "campanias" && <CampaniasView campanias={campanias} api={campaniasApi} cultivos={cultivos} onOpen={(id) => setNav({ view: "cultivos", campaniaId: id, cultivoId: null })} />}
+        {nav.view === "campanias" && <CampaniasView campanias={campanias} api={campaniasApi} cultivosApi={cultivosApi} cultivos={cultivos} onOpen={(id) => setNav({ view: "cultivos", campaniaId: id, cultivoId: null })} />}
 
         {nav.view === "cultivos" && campaniaActual && (
           <CultivosDeCampania campania={campaniaActual} cultivos={cultivos.filter((c) => c.campaniaId === campaniaActual.id)} api={cultivosApi}
@@ -376,12 +379,16 @@ function EmptyState({ icon: Icon, title, text }) {
 /* ------------------------------------------------------------------ */
 /*  Campañas                                                            */
 /* ------------------------------------------------------------------ */
-function CampaniasView({ campanias, api, cultivos, onOpen }) {
+function CampaniasView({ campanias, api, cultivosApi, cultivos, onOpen }) {
   const [anio, setAnio] = useState(new Date().getFullYear());
   const [nombre, setNombre] = useState("");
 
   const crear = () => { api.add({ anio: Number(anio), nombre: nombre.trim() || `Campaña ${anio}` }); setNombre(""); };
-  const eliminar = (id) => { if (confirm("Esta campaña se moverá a la papelera (se puede restaurar después). ¿Continuar?")) api.remove(id); };
+  const eliminar = (id) => {
+    if (!confirm("Esta campaña y todos sus cultivos se moverán a la papelera (se puede restaurar después). ¿Continuar?")) return;
+    api.remove(id);
+    cultivos.filter((cu) => cu.campaniaId === id).forEach((cu) => cultivosApi.remove(cu.id));
+  };
 
   return (
     <div className="space-y-5">
