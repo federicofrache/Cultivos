@@ -77,12 +77,13 @@ function costoFIFO(comprasDelInsumo, litrosYaConsumidos, litrosNuevos) {
 /*  Claude API (voz e imagen de factura)                               */
 /* ------------------------------------------------------------------ */
 async function askClaudeJSON(content) {
-  const res = await fetch("https://api.anthropic.com/v1/messages", {
+  const res = await fetch("/api/ask-claude", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content }] }),
+    body: JSON.stringify({ content }),
   });
   const data = await res.json();
+  if (!res.ok) throw new Error(data?.error || "Error consultando la IA");
   const text = (data.content || []).map((b) => b.text || "").join("\n");
   return JSON.parse(text.replace(/```json/g, "").replace(/```/g, "").trim());
 }
@@ -521,11 +522,11 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
   const rindeEquilibrio = costoPorHa !== null && precioPromedioVenta ? costoPorHa / precioPromedioVenta : null;
 
   const TABS = [
-    { id: "resumen", label: "Resumen", icon: TrendingUp },
-    { id: "lotes", label: "Lotes", icon: MapPin },
-    { id: "gastos", label: "Gastos", icon: Receipt },
-    { id: "ventas", label: "Ingresos · Ventas", icon: DollarSign },
-    { id: "remitos", label: "Ingresos · Remitos", icon: Truck },
+    { id: "resumen", label: "Resumen", icon: TrendingUp, color: "var(--frost)" },
+    { id: "lotes", label: "Lotes", icon: MapPin, color: "var(--gold)" },
+    { id: "gastos", label: "Gastos", icon: Receipt, color: "var(--rust)" },
+    { id: "ventas", label: "Ingresos · Ventas", icon: DollarSign, color: "var(--soil-light)" },
+    { id: "remitos", label: "Ingresos · Remitos", icon: Truck, color: "var(--soil-light)" },
   ];
 
   return (
@@ -535,7 +536,10 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
           const Icon = t.icon; const active = tab === t.id;
           return (
             <button key={t.id} onClick={() => setTab(t.id)} className="cc-sub" style={{ background: active ? "var(--panel)" : "transparent", color: active ? "var(--soil)" : "#8A8570", border: active ? "1px solid var(--line)" : "1px solid transparent", borderBottom: active ? "1px solid var(--panel)" : "none" }}>
-              <Icon size={17} /> {t.label}
+              <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: "50%", background: active ? t.color : t.color + "22" }}>
+                <Icon size={14} color={active ? "#fff" : t.color} />
+              </span>
+              {t.label}
             </button>
           );
         })}
@@ -789,7 +793,7 @@ function PresupuestoCard({ cultivo, cultivosApi, totalGastos }) {
 function StatCard({ label, value, icon: Icon, color }) {
   return (
     <div className="cc-card p-4 flex items-center gap-3">
-      <div style={{ background: color + "1A", borderRadius: 8, padding: 8 }}><Icon size={21} color={color} /></div>
+      <div style={{ background: color + "1A", borderRadius: "50%", width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center" }}><Icon size={19} color={color} /></div>
       <div><div style={{ fontSize: 11, color: "#8A8570", textTransform: "uppercase", letterSpacing: ".03em" }}>{label}</div><div className="cc-mono" style={{ fontSize: 17, fontWeight: 600 }}>{value}</div></div>
     </div>
   );
