@@ -278,7 +278,7 @@ export default function App() {
 
   const campaniaActual = campanias.find((c) => c.id === nav.campaniaId);
   const cultivoActual = cultivos.find((c) => c.id === nav.cultivoId);
-  const campoActual = campos.find((c) => c.id === nav.campoId);
+  const campoActual = nav.campoId === "__sin_campo__" ? { id: "__sin_campo__", nombre: "Sin campo asignado" } : campos.find((c) => c.id === nav.campoId);
 
   return (
     <div style={{ background: "var(--bg)", fontFamily: "var(--font-body)", color: "var(--ink)", minHeight: "100vh" }}>
@@ -326,7 +326,7 @@ export default function App() {
         {nav.view === "campos" && <CamposView campos={campos} api={camposApi} lotesApi={lotesApi} lotes={lotes} onOpen={(id) => setNav({ view: "lotes", campaniaId: null, cultivoId: null, campoId: id })} />}
 
         {nav.view === "lotes" && campoActual && (
-          <LotesView campo={campoActual} lotes={lotes.filter((l) => l.campoId === campoActual.id)} api={lotesApi} />
+          <LotesView campo={campoActual} lotes={campoActual.id === "__sin_campo__" ? lotes.filter((l) => !l.campoId) : lotes.filter((l) => l.campoId === campoActual.id)} api={lotesApi} sinCampo={campoActual.id === "__sin_campo__"} campos={campos} />
         )}
 
         {nav.view === "insumos" && <InsumosView compras={insumosCompras} api={insumosApi} stockInsumos={stockInsumos} user={user} />}
@@ -1306,6 +1306,7 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
 /* ------------------------------------------------------------------ */
 function CamposView({ campos, api, lotesApi, lotes, onOpen }) {
   const [nombre, setNombre] = useState("");
+  const lotesSinCampo = lotes.filter((l) => !l.campoId);
 
   const crear = () => { if (!nombre.trim()) return; api.add({ nombre: nombre.trim() }); setNombre(""); };
   const eliminar = (id) => {
@@ -1327,10 +1328,21 @@ function CamposView({ campos, api, lotesApi, lotes, onOpen }) {
         </div>
       </div>
 
-      {campos.length === 0 ? (
+      {campos.length === 0 && lotesSinCampo.length === 0 ? (
         <EmptyState icon={MapPin} title="Todavía no hay campos cargados" text="Creá un campo (establecimiento) para después agruparle sus lotes." />
       ) : (
         <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+          {lotesSinCampo.length > 0 && (
+            <div className="cc-card p-4 cursor-pointer" style={{ border: "1.5px dashed var(--line)" }} onClick={() => onOpen("__sin_campo__")}>
+              <div className="flex items-start justify-between">
+                <div>
+                  <div className="cc-h" style={{ fontSize: 17, fontWeight: 600, color: "#8A8570" }}>Sin campo asignado</div>
+                  <div style={{ fontSize: 12, color: "#8A8570" }}>{lotesSinCampo.length} lote{lotesSinCampo.length !== 1 ? "s" : ""} suelto{lotesSinCampo.length !== 1 ? "s" : ""}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-1 mt-3" style={{ color: "var(--frost)", fontSize: 12.5, fontWeight: 600 }}>Ver y ordenar <ChevronRight size={16} /></div>
+            </div>
+          )}
           {campos.map((c) => {
             const nLotes = lotes.filter((l) => l.campoId === c.id).length;
             const hasTotal = lotes.filter((l) => l.campoId === c.id).reduce((s, l) => s + Number(l.hectareas || 0), 0);
@@ -1356,28 +1368,47 @@ function CamposView({ campos, api, lotesApi, lotes, onOpen }) {
 /* ------------------------------------------------------------------ */
 /*  Lotes de un campo                                                    */
 /* ------------------------------------------------------------------ */
-function LotesView({ campo, lotes, api }) {
+function LotesView({ campo, lotes, api, sinCampo, campos = [] }) {
   const [nombre, setNombre] = useState("");
   const [hectareas, setHectareas] = useState("");
   const guardar = () => { if (!nombre.trim()) return; api.add({ nombre: nombre.trim(), hectareas: hectareas ? Number(hectareas) : null, campoId: campo.id }); setNombre(""); setHectareas(""); };
   const eliminar = (id) => { if (confirm("Este lote se moverá a la papelera. ¿Continuar?")) api.remove(id); };
+  const mover = (id, campoId) => { if (campoId) api.update(id, { campoId }); };
 
   return (
     <div className="space-y-5">
-      <div className="cc-card p-4">
-        <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Nuevo lote en {campo.nombre}</div>
-        <div className="flex gap-3 flex-wrap items-end">
-          <div style={{ flex: 1, minWidth: 180 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Nombre</label><input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Lote 4 - La Loma" /></div>
-          <div style={{ width: 140 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Hectáreas (opcional)</label><input className="cc-input" type="number" value={hectareas} onChange={(e) => setHectareas(e.target.value)} /></div>
-          <button className="cc-btn cc-btn-primary" onClick={guardar}><Plus size={18} /> Agregar</button>
+      {sinCampo ? (
+        <div className="cc-card p-4" style={{ background: "#FDF3E0", border: "1px solid var(--gold)" }}>
+          <div style={{ fontSize: 13, color: "#7A5A1E" }}>Estos lotes son de antes de tener "Campos" y no pertenecen a ninguno. Asignalos a un campo desde el selector de cada fila, o borralos si ya no los usás.</div>
         </div>
-      </div>
+      ) : (
+        <div className="cc-card p-4">
+          <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Nuevo lote en {campo.nombre}</div>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div style={{ flex: 1, minWidth: 180 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Nombre</label><input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Lote 4 - La Loma" /></div>
+            <div style={{ width: 140 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Hectáreas (opcional)</label><input className="cc-input" type="number" value={hectareas} onChange={(e) => setHectareas(e.target.value)} /></div>
+            <button className="cc-btn cc-btn-primary" onClick={guardar}><Plus size={18} /> Agregar</button>
+          </div>
+        </div>
+      )}
       {lotes.length === 0 ? <EmptyState icon={MapPin} title="No hay lotes cargados en este campo" text="Los lotes son de referencia: van a aparecer como sugerencia al cargar el 'Campo' de cada remito." /> : (
         <div className="cc-card overflow-hidden">
           <table className="w-full" style={{ fontSize: 13 }}>
-            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-4 py-2">Lote</th><th className="px-4 py-2">Hectáreas</th><th className="px-4 py-2"></th></tr></thead>
+            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-4 py-2">Lote</th><th className="px-4 py-2">Hectáreas</th>{sinCampo && <th className="px-4 py-2">Asignar a campo</th>}<th className="px-4 py-2"></th></tr></thead>
             <tbody>{lotes.map((l) => (
-              <tr key={l.id} style={{ borderTop: "1px solid var(--line)" }}><td className="px-4 py-2">{l.nombre}</td><td className="px-4 py-2 cc-mono">{l.hectareas ? `${fmt(l.hectareas, 1)} ha` : "-"}</td><td className="px-4 py-2 text-right"><button onClick={() => eliminar(l.id)}><Trash2 size={17} color="var(--rust)" /></button></td></tr>
+              <tr key={l.id} style={{ borderTop: "1px solid var(--line)" }}>
+                <td className="px-4 py-2">{l.nombre}</td>
+                <td className="px-4 py-2 cc-mono">{l.hectareas ? `${fmt(l.hectareas, 1)} ha` : "-"}</td>
+                {sinCampo && (
+                  <td className="px-4 py-2">
+                    <select className="cc-input" style={{ padding: "5px 8px", fontSize: 12.5 }} defaultValue="" onChange={(e) => mover(l.id, e.target.value)}>
+                      <option value="" disabled>Elegir campo…</option>
+                      {campos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                    </select>
+                  </td>
+                )}
+                <td className="px-4 py-2 text-right"><button onClick={() => eliminar(l.id)}><Trash2 size={17} color="var(--rust)" /></button></td>
+              </tr>
             ))}</tbody>
           </table>
         </div>
