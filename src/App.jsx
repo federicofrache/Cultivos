@@ -196,12 +196,13 @@ export default function App() {
   const [user, setUser] = useState(undefined);
   const [campaniasRaw, setCampaniasRaw] = useState([]);
   const [cultivosRaw, setCultivosRaw] = useState([]);
+  const [camposRaw, setCamposRaw] = useState([]);
   const [lotesRaw, setLotesRaw] = useState([]);
   const [insumosComprasRaw, setInsumosComprasRaw] = useState([]);
   const [gastosRaw, setGastosRaw] = useState([]);
   const [ventasRaw, setVentasRaw] = useState([]);
   const [remitosRaw, setRemitosRaw] = useState([]);
-  const [nav, setNav] = useState({ view: "campanias", campaniaId: null, cultivoId: null });
+  const [nav, setNav] = useState({ view: "campanias", campaniaId: null, cultivoId: null, campoId: null });
 
   useEffect(() => onAuthStateChanged(auth, (u) => setUser(u)), []);
 
@@ -214,7 +215,8 @@ export default function App() {
     const u5 = onSnapshot(collection(db, "gastos"), (s) => setGastosRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
     const u6 = onSnapshot(collection(db, "ventas"), (s) => setVentasRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
     const u7 = onSnapshot(collection(db, "remitos"), (s) => setRemitosRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
+    const u8 = onSnapshot(collection(db, "campos"), (s) => setCamposRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
   }, [user]);
 
   // Versiones "activas" (sin lo que está en la papelera), que usa el resto de la app
@@ -223,7 +225,10 @@ export default function App() {
   // Además de no estar eliminado, un cultivo solo cuenta como activo si su campaña también sigue activa
   // (evita cultivos "huérfanos" en Resumen general cuando se borró la campaña sin borrar sus cultivos)
   const cultivos = cultivosRaw.filter((x) => !x.eliminado && campaniaIdsActivas.has(x.campaniaId));
-  const lotes = lotesRaw.filter((x) => !x.eliminado);
+  const campos = camposRaw.filter((x) => !x.eliminado);
+  const campoIdsActivos = new Set(campos.map((c) => c.id));
+  // Un lote solo cuenta como activo si además el campo al que pertenece sigue activo (evita huérfanos igual que con cultivos/campañas)
+  const lotes = lotesRaw.filter((x) => !x.eliminado && (!x.campoId || campoIdsActivos.has(x.campoId)));
   const insumosCompras = insumosComprasRaw.filter((x) => !x.eliminado);
   const gastosTodos = gastosRaw.filter((x) => !x.eliminado);
   const ventasTodas = ventasRaw.filter((x) => !x.eliminado);
@@ -245,6 +250,7 @@ export default function App() {
 
   const campaniasApi = softDeleteApi("campanias");
   const cultivosApi = softDeleteApi("cultivos");
+  const camposApi = softDeleteApi("campos");
   const lotesApi = softDeleteApi("lotes");
   const insumosApi = softDeleteApi("insumos_compras");
   const ventasApiGlobal = softDeleteApi("ventas");
@@ -272,6 +278,7 @@ export default function App() {
 
   const campaniaActual = campanias.find((c) => c.id === nav.campaniaId);
   const cultivoActual = cultivos.find((c) => c.id === nav.cultivoId);
+  const campoActual = campos.find((c) => c.id === nav.campoId);
 
   return (
     <div style={{ background: "var(--bg)", fontFamily: "var(--font-body)", color: "var(--ink)", minHeight: "100vh" }}>
@@ -292,7 +299,7 @@ export default function App() {
             <button onClick={() => setNav({ view: "insumos", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
               <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: "var(--gold)" }}><Package size={13} color="#fff" /></span> Insumos
             </button>
-            <button onClick={() => setNav({ view: "lotes", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
+            <button onClick={() => setNav({ view: "campos", campaniaId: null, cultivoId: null, campoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
               <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: "var(--soil-light)" }}><MapPin size={13} color="#fff" /></span> Lotes
             </button>
             <button onClick={() => setNav({ view: "papelera", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
@@ -305,7 +312,7 @@ export default function App() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-6">
-        <Breadcrumb nav={nav} setNav={setNav} campania={campaniaActual} cultivo={cultivoActual} />
+        <Breadcrumb nav={nav} setNav={setNav} campania={campaniaActual} cultivo={cultivoActual} campo={campoActual} />
 
         {nav.view === "campanias" && <CampaniasView campanias={campanias} api={campaniasApi} cultivosApi={cultivosApi} cultivos={cultivos} onOpen={(id) => setNav({ view: "cultivos", campaniaId: id, cultivoId: null })} />}
 
@@ -316,7 +323,11 @@ export default function App() {
 
         {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} />}
 
-        {nav.view === "lotes" && <LotesView lotes={lotes} api={lotesApi} />}
+        {nav.view === "campos" && <CamposView campos={campos} api={camposApi} lotesApi={lotesApi} lotes={lotes} onOpen={(id) => setNav({ view: "lotes", campaniaId: null, cultivoId: null, campoId: id })} />}
+
+        {nav.view === "lotes" && campoActual && (
+          <LotesView campo={campoActual} lotes={lotes.filter((l) => l.campoId === campoActual.id)} api={lotesApi} />
+        )}
 
         {nav.view === "insumos" && <InsumosView compras={insumosCompras} api={insumosApi} stockInsumos={stockInsumos} user={user} />}
 
@@ -330,6 +341,7 @@ export default function App() {
             grupos={[
               { titulo: "Campañas", items: campaniasRaw.filter((x) => x.eliminado), api: campaniasApi, campo: (x) => x.nombre || x.anio },
               { titulo: "Cultivos", items: cultivosRaw.filter((x) => x.eliminado), api: cultivosApi, campo: (x) => x.nombre },
+              { titulo: "Campos", items: camposRaw.filter((x) => x.eliminado), api: camposApi, campo: (x) => x.nombre },
               { titulo: "Lotes", items: lotesRaw.filter((x) => x.eliminado), api: lotesApi, campo: (x) => x.nombre },
               { titulo: "Insumos (compras)", items: insumosComprasRaw.filter((x) => x.eliminado), api: insumosApi, campo: (x) => `${x.nombre} — ${fmt(x.litros, 1)} L` },
               { titulo: "Gastos", items: gastosRaw.filter((x) => x.eliminado), api: gastosApiGlobal, campo: (x) => `${x.origen} — ${fmtUSD(x.monto)}` },
@@ -343,23 +355,37 @@ export default function App() {
   );
 }
 
-function Breadcrumb({ nav, setNav, campania, cultivo }) {
-  if (["campanias", "lotes", "insumos", "resumen_general", "papelera"].includes(nav.view)) return null;
+function Breadcrumb({ nav, setNav, campania, cultivo, campo }) {
+  if (["campanias", "campos", "insumos", "resumen_general", "papelera"].includes(nav.view)) return null;
   return (
     <div className="flex items-center gap-1 mb-4" style={{ fontSize: 13, color: "#8A8570" }}>
-      <button onClick={() => setNav({ view: "campanias", campaniaId: null, cultivoId: null })} style={{ color: "var(--frost)", fontWeight: 600 }}>Campañas</button>
-      {campania && (
+      {nav.view === "lotes" ? (
         <>
-          <ChevronRight size={16} />
-          <button onClick={() => setNav({ view: "cultivos", campaniaId: campania.id, cultivoId: null })} style={{ color: nav.view === "cultivos" ? "var(--ink)" : "var(--frost)", fontWeight: 600 }}>
-            {campania.nombre || campania.anio}
-          </button>
+          <button onClick={() => setNav({ view: "campos", campaniaId: null, cultivoId: null, campoId: null })} style={{ color: "var(--frost)", fontWeight: 600 }}>Campos</button>
+          {campo && (
+            <>
+              <ChevronRight size={16} />
+              <span style={{ color: "var(--ink)", fontWeight: 600 }}>{campo.nombre}</span>
+            </>
+          )}
         </>
-      )}
-      {cultivo && (
+      ) : (
         <>
-          <ChevronRight size={16} />
-          <span style={{ color: "var(--ink)", fontWeight: 600 }}>{cultivo.nombre}</span>
+          <button onClick={() => setNav({ view: "campanias", campaniaId: null, cultivoId: null })} style={{ color: "var(--frost)", fontWeight: 600 }}>Campañas</button>
+          {campania && (
+            <>
+              <ChevronRight size={16} />
+              <button onClick={() => setNav({ view: "cultivos", campaniaId: campania.id, cultivoId: null })} style={{ color: nav.view === "cultivos" ? "var(--ink)" : "var(--frost)", fontWeight: 600 }}>
+                {campania.nombre || campania.anio}
+              </button>
+            </>
+          )}
+          {cultivo && (
+            <>
+              <ChevronRight size={16} />
+              <span style={{ color: "var(--ink)", fontWeight: 600 }}>{cultivo.nombre}</span>
+            </>
+          )}
         </>
       )}
     </div>
@@ -1278,23 +1304,75 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
 /* ------------------------------------------------------------------ */
 /*  Lotes (referencia global)                                           */
 /* ------------------------------------------------------------------ */
-function LotesView({ lotes, api }) {
+function CamposView({ campos, api, lotesApi, lotes, onOpen }) {
+  const [nombre, setNombre] = useState("");
+
+  const crear = () => { if (!nombre.trim()) return; api.add({ nombre: nombre.trim() }); setNombre(""); };
+  const eliminar = (id) => {
+    if (!confirm("Este campo y todos sus lotes se moverán a la papelera (se puede restaurar después). ¿Continuar?")) return;
+    api.remove(id);
+    lotes.filter((l) => l.campoId === id).forEach((l) => lotesApi.remove(l.id));
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="cc-card p-4">
+        <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Nuevo campo</div>
+        <div className="flex gap-3 flex-wrap items-end">
+          <div style={{ flex: 1, minWidth: 180 }}>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Nombre</label>
+            <input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Establecimiento La Loma" />
+          </div>
+          <button className="cc-btn cc-btn-primary" onClick={crear}><Plus size={18} /> Agregar</button>
+        </div>
+      </div>
+
+      {campos.length === 0 ? (
+        <EmptyState icon={MapPin} title="Todavía no hay campos cargados" text="Creá un campo (establecimiento) para después agruparle sus lotes." />
+      ) : (
+        <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))" }}>
+          {campos.map((c) => {
+            const nLotes = lotes.filter((l) => l.campoId === c.id).length;
+            const hasTotal = lotes.filter((l) => l.campoId === c.id).reduce((s, l) => s + Number(l.hectareas || 0), 0);
+            return (
+              <div key={c.id} className="cc-card p-4 cursor-pointer" onClick={() => onOpen(c.id)}>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="cc-h" style={{ fontSize: 17, fontWeight: 600 }}>{c.nombre}</div>
+                    <div style={{ fontSize: 12, color: "#8A8570" }}>{nLotes} lote{nLotes !== 1 ? "s" : ""}{hasTotal ? ` · ${fmt(hasTotal, 1)} ha` : ""}</div>
+                  </div>
+                  <button onClick={(e) => { e.stopPropagation(); eliminar(c.id); }}><Trash2 size={16} color="var(--rust)" /></button>
+                </div>
+                <div className="flex items-center gap-1 mt-3" style={{ color: "var(--frost)", fontSize: 12.5, fontWeight: 600 }}>Ver lotes <ChevronRight size={16} /></div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Lotes de un campo                                                    */
+/* ------------------------------------------------------------------ */
+function LotesView({ campo, lotes, api }) {
   const [nombre, setNombre] = useState("");
   const [hectareas, setHectareas] = useState("");
-  const guardar = () => { if (!nombre.trim()) return; api.add({ nombre: nombre.trim(), hectareas: hectareas ? Number(hectareas) : null }); setNombre(""); setHectareas(""); };
+  const guardar = () => { if (!nombre.trim()) return; api.add({ nombre: nombre.trim(), hectareas: hectareas ? Number(hectareas) : null, campoId: campo.id }); setNombre(""); setHectareas(""); };
   const eliminar = (id) => { if (confirm("Este lote se moverá a la papelera. ¿Continuar?")) api.remove(id); };
 
   return (
     <div className="space-y-5">
       <div className="cc-card p-4">
-        <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Nuevo lote</div>
+        <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Nuevo lote en {campo.nombre}</div>
         <div className="flex gap-3 flex-wrap items-end">
           <div style={{ flex: 1, minWidth: 180 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Nombre</label><input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Lote 4 - La Loma" /></div>
           <div style={{ width: 140 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Hectáreas (opcional)</label><input className="cc-input" type="number" value={hectareas} onChange={(e) => setHectareas(e.target.value)} /></div>
           <button className="cc-btn cc-btn-primary" onClick={guardar}><Plus size={18} /> Agregar</button>
         </div>
       </div>
-      {lotes.length === 0 ? <EmptyState icon={MapPin} title="No hay lotes cargados" text="Los lotes son de referencia: van a aparecer como sugerencia al cargar el 'Campo' de cada remito." /> : (
+      {lotes.length === 0 ? <EmptyState icon={MapPin} title="No hay lotes cargados en este campo" text="Los lotes son de referencia: van a aparecer como sugerencia al cargar el 'Campo' de cada remito." /> : (
         <div className="cc-card overflow-hidden">
           <table className="w-full" style={{ fontSize: 13 }}>
             <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-4 py-2">Lote</th><th className="px-4 py-2">Hectáreas</th><th className="px-4 py-2"></th></tr></thead>
