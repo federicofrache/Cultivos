@@ -13,7 +13,7 @@ import {
   Sprout, Snowflake, Sun, Wheat, Receipt, Mic, Camera, MapPin, TrendingUp,
   TrendingDown, Plus, Trash2, Loader2, LogOut, ChevronRight, ChevronLeft,
   Truck, DollarSign, FileText, AlertCircle, CheckCircle2, Paperclip, Pencil, X, Package, Boxes, Copy, Search,
-  Download, RotateCcw, Trash, LayoutDashboard,
+  Download, RotateCcw, Trash, LayoutDashboard, Menu,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -129,6 +129,43 @@ const GLOBAL_STYLES = `
   .cc-btn-ghost:hover{background:rgba(0,0,0,.03);}
   .cc-chip{font-size:11px; font-weight:600; padding:3px 9px; border-radius:99px; letter-spacing:.02em;}
   .cc-sub{display:flex; align-items:center; gap:6px; padding:8px 14px; font-size:13px; font-weight:600; border-radius:8px 8px 0 0; cursor:pointer;}
+
+  /* Utilidades básicas usadas en toda la app (el proyecto no tiene Tailwind instalado) */
+  html, body { overflow-x: hidden; }
+  .flex{display:flex;} .flex-col{flex-direction:column;} .flex-wrap{flex-wrap:wrap;}
+  .items-center{align-items:center;} .items-start{align-items:flex-start;} .items-end{align-items:flex-end;}
+  .justify-between{justify-content:space-between;} .justify-center{justify-content:center;} .justify-end{justify-content:flex-end;}
+  .grid{display:grid;}
+  .gap-1{gap:4px;} .gap-2{gap:8px;} .gap-3{gap:12px;} .gap-4{gap:16px;}
+  .space-y-2>*+*{margin-top:8px;} .space-y-3>*+*{margin-top:12px;} .space-y-4>*+*{margin-top:16px;} .space-y-5>*+*{margin-top:20px;} .space-y-6>*+*{margin-top:24px;}
+  .mb-1{margin-bottom:4px;} .mb-2{margin-bottom:8px;} .mb-3{margin-bottom:12px;} .mb-4{margin-bottom:16px;} .mb-5{margin-bottom:20px;}
+  .mt-2{margin-top:8px;} .mt-3{margin-top:12px;}
+  .p-4{padding:16px;} .p-6{padding:24px;}
+  .px-3{padding-left:12px;padding-right:12px;} .px-4{padding-left:16px;padding-right:16px;} .px-6{padding-left:24px;padding-right:24px;}
+  .py-2{padding-top:8px;padding-bottom:8px;} .py-4{padding-top:16px;padding-bottom:16px;} .py-6{padding-top:24px;padding-bottom:24px;} .py-16{padding-top:64px;padding-bottom:64px;}
+  .max-w-6xl{max-width:72rem;} .mx-auto{margin-left:auto;margin-right:auto;}
+  .w-full{width:100%;} .text-center{text-align:center;} .text-right{text-align:right;}
+  .cursor-pointer{cursor:pointer;}
+  .animate-spin{animation:cc-spin 1s linear infinite;} @keyframes cc-spin{to{transform:rotate(360deg);}}
+
+  /* Tablas: que scrolleen horizontalmente en vez de recortarse o desbordar la pantalla en el celular */
+  .cc-card.overflow-hidden{overflow-x:auto; -webkit-overflow-scrolling:touch;}
+  .cc-card.overflow-hidden table{min-width:520px;}
+
+  /* En el celular, los inputs necesitan al menos 16px de letra o Safari hace zoom solo al tocarlos */
+  @media (max-width: 640px){
+    .cc-input{font-size:16px;}
+    .px-6{padding-left:14px;padding-right:14px;}
+    .py-4{padding-top:12px;padding-bottom:12px;}
+  }
+
+  /* Menú superior: en pantallas angostas se oculta y aparece el botón de hamburguesa */
+  .cc-nav-desktop{display:flex;}
+  .cc-nav-toggle{display:none;}
+  @media (max-width: 760px){
+    .cc-nav-desktop{display:none;}
+    .cc-nav-toggle{display:inline-flex !important;}
+  }
 `;
 
 /* ------------------------------------------------------------------ */
@@ -203,6 +240,7 @@ export default function App() {
   const [ventasRaw, setVentasRaw] = useState([]);
   const [remitosRaw, setRemitosRaw] = useState([]);
   const [nav, setNav] = useState({ view: "campanias", campaniaId: null, cultivoId: null, campoId: null });
+  const [menuMovilAbierto, setMenuMovilAbierto] = useState(false);
 
   useEffect(() => onAuthStateChanged(auth, (u) => setUser(u)), []);
 
@@ -296,7 +334,9 @@ export default function App() {
               <div style={{ color: "#B8C2AC", fontSize: 12 }}>Campañas · Cultivos · Gastos e Ingresos</div>
             </div>
           </button>
-          <div className="flex items-center gap-3">
+
+          {/* Menú de escritorio: se oculta en pantallas angostas (ver CSS .cc-nav-desktop) */}
+          <div className="cc-nav-desktop items-center gap-3">
             <button onClick={() => setNav({ view: "resumen_general", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
               <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: "var(--frost)" }}><LayoutDashboard size={13} color="#fff" /></span> Resumen general
             </button>
@@ -312,7 +352,34 @@ export default function App() {
             <span style={{ color: "#D8DECB", fontSize: 12.5 }}>{user.email}</span>
             <button onClick={() => signOut(auth)} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}><LogOut size={16} /> Salir</button>
           </div>
+
+          {/* Botón de hamburguesa: solo visible en pantallas angostas (ver CSS .cc-nav-toggle) */}
+          <button className="cc-nav-toggle" onClick={() => setMenuMovilAbierto((v) => !v)} style={{ background: "transparent", border: "1px solid #4C5A40", color: "#fff", padding: "8px", borderRadius: 7 }}>
+            {menuMovilAbierto ? <X size={20} /> : <Menu size={20} />}
+          </button>
         </div>
+
+        {/* Panel desplegable del menú móvil */}
+        {menuMovilAbierto && (
+          <div className="flex flex-col gap-2 mt-3" style={{ maxWidth: "72rem", margin: "12px auto 0" }}>
+            {[
+              { label: "Resumen general", icon: LayoutDashboard, color: "var(--frost)", onClick: () => setNav({ view: "resumen_general", campaniaId: null, cultivoId: null }) },
+              { label: "Insumos", icon: Package, color: "var(--gold)", onClick: () => setNav({ view: "insumos", campaniaId: null, cultivoId: null }) },
+              { label: "Lotes", icon: MapPin, color: "var(--soil-light)", onClick: () => setNav({ view: "campos", campaniaId: null, cultivoId: null, campoId: null }) },
+              { label: "Papelera", icon: Trash, color: "var(--rust)", onClick: () => setNav({ view: "papelera", campaniaId: null, cultivoId: null }) },
+            ].map((it) => {
+              const Icon = it.icon;
+              return (
+                <button key={it.label} onClick={() => { it.onClick(); setMenuMovilAbierto(false); }} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "10px 12px", fontSize: 13.5, justifyContent: "flex-start" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 24, height: 24, borderRadius: "50%", background: it.color }}><Icon size={14} color="#fff" /></span> {it.label}
+                </button>
+              );
+            })}
+            <div style={{ borderTop: "1px solid #4C5A40", margin: "4px 0" }} />
+            <div style={{ color: "#D8DECB", fontSize: 12.5, padding: "0 4px" }}>{user.email}</div>
+            <button onClick={() => signOut(auth)} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "10px 12px", fontSize: 13.5, justifyContent: "flex-start" }}><LogOut size={16} /> Salir</button>
+          </div>
+        )}
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-6">
