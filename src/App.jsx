@@ -225,14 +225,18 @@ export default function App() {
   // Además de no estar eliminado, un cultivo solo cuenta como activo si su campaña también sigue activa
   // (evita cultivos "huérfanos" en Resumen general cuando se borró la campaña sin borrar sus cultivos)
   const cultivos = cultivosRaw.filter((x) => !x.eliminado && campaniaIdsActivas.has(x.campaniaId));
+  const cultivoIdsActivos = new Set(cultivos.map((c) => c.id));
   const campos = camposRaw.filter((x) => !x.eliminado);
   const campoIdsActivos = new Set(campos.map((c) => c.id));
   // Un lote solo cuenta como activo si además el campo al que pertenece sigue activo (evita huérfanos igual que con cultivos/campañas)
   const lotes = lotesRaw.filter((x) => !x.eliminado && (!x.campoId || campoIdsActivos.has(x.campoId)));
   const insumosCompras = insumosComprasRaw.filter((x) => !x.eliminado);
-  const gastosTodos = gastosRaw.filter((x) => !x.eliminado);
-  const ventasTodas = ventasRaw.filter((x) => !x.eliminado);
-  const remitosTodos = remitosRaw.filter((x) => !x.eliminado);
+  // Gastos, ventas y remitos siempre pertenecen a un cultivo puntual: si ese cultivo ya no existe
+  // (se borró, en cascada o directo), tampoco deben contarse en ningún cálculo global
+  // (stock de insumos, aporte por socio, resumen general, etc.)
+  const gastosTodos = gastosRaw.filter((x) => !x.eliminado && cultivoIdsActivos.has(x.cultivoId));
+  const ventasTodas = ventasRaw.filter((x) => !x.eliminado && cultivoIdsActivos.has(x.cultivoId));
+  const remitosTodos = remitosRaw.filter((x) => !x.eliminado && cultivoIdsActivos.has(x.cultivoId));
 
   if (user === undefined) {
     return <div style={{ background: "var(--bg)", minHeight: "100vh" }} className="flex items-center justify-center"><style>{GLOBAL_STYLES}</style><Loader2 className="animate-spin" color="var(--soil)" size={30} /></div>;
@@ -409,7 +413,10 @@ function CampaniasView({ campanias, api, cultivosApi, cultivos, onOpen }) {
   const [anio, setAnio] = useState(new Date().getFullYear());
   const [nombre, setNombre] = useState("");
 
-  const crear = () => { api.add({ anio: Number(anio), nombre: nombre.trim() || `Campaña ${anio}` }); setNombre(""); };
+  const crear = () => {
+    if (!anio || Number(anio) < 1900 || Number(anio) > 2100) { alert("Ingresá un año válido."); return; }
+    api.add({ anio: Number(anio), nombre: nombre.trim() || `Campaña ${anio}` }); setNombre("");
+  };
   const eliminar = (id) => {
     if (!confirm("Esta campaña y todos sus cultivos se moverán a la papelera (se puede restaurar después). ¿Continuar?")) return;
     api.remove(id);
@@ -718,6 +725,7 @@ function CultivoLotesTab({ cultivo, lotes, lotesApi, cultivosApi, superficie }) 
 
   const agregarNuevoLote = async () => {
     if (!nombre.trim() || !hectareas) { alert("Completá nombre y hectáreas del lote."); return; }
+    if (Number(hectareas) <= 0) { alert("Las hectáreas tienen que ser un número mayor a 0."); return; }
     const ref = await lotesApi.add({ nombre: nombre.trim(), hectareas: Number(hectareas) });
     await cultivosApi.update(cultivo.id, { loteIds: [...loteIds, ref.id] });
     setNombre(""); setHectareas("");
@@ -775,6 +783,7 @@ function PresupuestoCard({ cultivo, cultivosApi, totalGastos }) {
   const [valor, setValor] = useState(cultivo.presupuesto ?? "");
 
   const guardar = async () => {
+    if (valor && Number(valor) <= 0) { alert("El presupuesto tiene que ser un número mayor a 0."); return; }
     await cultivosApi.update(cultivo.id, { presupuesto: valor ? Number(valor) : null });
     setEditando(false);
   };
@@ -947,10 +956,12 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
   const guardar = async () => {
     if (tipo === "insumo") {
       if (!insumoSel || !litrosUsados || !form.fecha) { alert("Elegí el insumo, los litros usados y la fecha."); return; }
+      if (Number(litrosUsados) <= 0) { alert("Los litros usados tienen que ser un número mayor a 0."); return; }
       if (!editId && Number(litrosUsados) > (insumoElegido?.disponible || 0)) {
         if (!confirm(`Solo hay ${fmt(insumoElegido?.disponible || 0, 1)} litros disponibles de ${insumoSel}. ¿Registrar igual el consumo?`)) return;
       }
     } else if (!form.origen || !form.monto || !form.fecha) { alert("Completá al menos origen, monto y fecha."); return; }
+    else if (Number(form.monto) <= 0) { alert("El monto tiene que ser un número mayor a 0."); return; }
 
     let facturaUrls, facturaNombres;
     if (archivos.length) {
@@ -1167,6 +1178,7 @@ function VentasTab({ cultivo, ventas, api }) {
 
   const guardar = () => {
     if (!form.fecha || !form.toneladas || !form.dolaresPorTonelada) { alert("Completá fecha, toneladas y U$S/ton."); return; }
+    if (Number(form.toneladas) <= 0 || Number(form.dolaresPorTonelada) <= 0) { alert("Toneladas y U$S/ton tienen que ser números mayores a 0."); return; }
     api.add({ cultivoId: cultivo.id, fecha: form.fecha, origen: form.origen, toneladas: Number(form.toneladas), dolaresPorTonelada: Number(form.dolaresPorTonelada) });
     setForm({ fecha: "", origen: "", toneladas: "", dolaresPorTonelada: "" });
     setMensaje("Venta guardada ✓"); setTimeout(() => setMensaje(""), 2500);
@@ -1235,6 +1247,8 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
 
   const guardar = () => {
     if (!form.fecha || !form.remito || !form.kgSL) { alert("Completá al menos fecha, N° de remito y Kg SL."); return; }
+    if (Number(form.kgSL) <= 0) { alert("Los Kg SL tienen que ser un número mayor a 0."); return; }
+    if (form.humedad && (Number(form.humedad) < 0 || Number(form.humedad) > 100)) { alert("La humedad tiene que ser un porcentaje entre 0 y 100."); return; }
     api.add({
       cultivoId: cultivo.id, fecha: form.fecha, remito: form.remito, campo: form.campo, destino: form.destino,
       kgTolva: Number(form.kgTolva || 0), kgBrutos: Number(form.kgBrutos || 0), kgSL: Number(form.kgSL || 0), humedad: Number(form.humedad || 0),
@@ -1371,7 +1385,11 @@ function CamposView({ campos, api, lotesApi, lotes, onOpen }) {
 function LotesView({ campo, lotes, api, sinCampo, campos = [] }) {
   const [nombre, setNombre] = useState("");
   const [hectareas, setHectareas] = useState("");
-  const guardar = () => { if (!nombre.trim()) return; api.add({ nombre: nombre.trim(), hectareas: hectareas ? Number(hectareas) : null, campoId: campo.id }); setNombre(""); setHectareas(""); };
+  const guardar = () => {
+    if (!nombre.trim()) return;
+    if (hectareas && Number(hectareas) <= 0) { alert("Las hectáreas tienen que ser un número mayor a 0."); return; }
+    api.add({ nombre: nombre.trim(), hectareas: hectareas ? Number(hectareas) : null, campoId: campo.id }); setNombre(""); setHectareas("");
+  };
   const eliminar = (id) => { if (confirm("Este lote se moverá a la papelera. ¿Continuar?")) api.remove(id); };
   const mover = (id, campoId) => { if (campoId) api.update(id, { campoId }); };
 
@@ -1472,6 +1490,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
   const guardar = async () => {
     const validos = items.filter((it) => it.nombre && it.litros && it.precio);
     if (!fecha || !origen || !validos.length) { alert("Completá fecha, origen y al menos un insumo con nombre, litros y precio."); return; }
+    if (validos.some((it) => Number(it.litros) <= 0 || Number(it.precio) <= 0)) { alert("Los litros y el precio de cada insumo tienen que ser números mayores a 0."); return; }
     let facturaUrl = null, facturaNombre = null;
     if (archivo) {
       setSubiendo(true);
