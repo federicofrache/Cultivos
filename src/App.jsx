@@ -1578,8 +1578,11 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, lotes, insumo
   const comparables = Object.entries(porCultivoNombre).filter(([, arr]) => arr.length > 1);
 
   // Aporte por socio, combinando gastos de todos los cultivos + compras de insumos
+  // Solo se cuentan gastos de cultivos que siguen activos (evita arrastrar montos de cultivos ya borrados)
+  const cultivoIdsActivos = new Set(cultivos.map((c) => c.id));
+  const gastosActivos = gastos.filter((g) => cultivoIdsActivos.has(g.cultivoId));
   const aportesSocio = {};
-  gastos.forEach((g) => {
+  gastosActivos.forEach((g) => {
     const s = g.socio && g.socio.trim() ? g.socio.trim() : "Sin asignar";
     aportesSocio[s] = (aportesSocio[s] || 0) + Number(g.monto || 0);
   });
