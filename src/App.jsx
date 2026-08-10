@@ -1514,6 +1514,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
   const [fecha, setFecha] = useState("");
   const [origen, setOrigen] = useState("");
   const [socio, setSocio] = useState("");
+  const [numeroFactura, setNumeroFactura] = useState("");
   const [items, setItems] = useState([emptyItemInsumo()]);
   const [archivo, setArchivo] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -1548,10 +1549,11 @@ function InsumosView({ compras, api, stockInsumos, user }) {
     try {
       const data = await askClaudeJSON([
         { type: "image", source: { type: "base64", media_type: mediaType, data: imgB64 } },
-        { type: "text", text: `Esta imagen es una factura de compra de insumos agropecuarios (agroquímicos, fertilizantes, combustible, etc.) en Uruguay. Devolvé SOLO un JSON (sin texto extra, sin markdown) con: {"origen":"nombre del proveedor","fecha":"YYYY-MM-DD o vacío","items":[{"nombre":"nombre del insumo","litros":number (cantidad total, en la unidad que corresponda),"unidad":"Litros, Unidades, Kg o Bolsas — la que más se ajuste al insumo","precio":number (precio TOTAL pagado por esa cantidad, en dólares)}]}. Incluí un objeto en "items" por cada insumo distinto de la factura.` },
+        { type: "text", text: `Esta imagen es una factura de compra de insumos agropecuarios (agroquímicos, fertilizantes, combustible, etc.) en Uruguay. Devolvé SOLO un JSON (sin texto extra, sin markdown) con: {"origen":"nombre del proveedor","fecha":"YYYY-MM-DD o vacío","numeroFactura":"número de factura si se ve en la imagen, sino vacío","items":[{"nombre":"nombre del insumo","litros":number (cantidad total, en la unidad que corresponda),"unidad":"Litros, Unidades, Kg o Bolsas — la que más se ajuste al insumo","precio":number (precio TOTAL pagado por esa cantidad, en dólares)}]}. Incluí un objeto en "items" por cada insumo distinto de la factura.` },
       ]);
       setOrigen(data.origen || origen);
       if (data.fecha) setFecha(data.fecha);
+      if (data.numeroFactura) setNumeroFactura(data.numeroFactura);
       if (Array.isArray(data.items) && data.items.length) setItems(data.items.map((it) => {
         const litros = it.litros ?? "";
         const unidad = UNIDADES_INSUMO.includes(it.unidad) ? it.unidad : "Litros";
@@ -1581,9 +1583,9 @@ function InsumosView({ compras, api, stockInsumos, user }) {
     await Promise.all(validos.map((it) => api.add({
       fecha, origen, nombre: it.nombre, litros: Number(it.litros), unidad: it.unidad || "Litros",
       precio: Number(it.litros) * Number(it.precioUnitario), precioUnitario: Number(it.precioUnitario),
-      facturaUrl, facturaNombre, usuario: user.email, socio: socio || "",
+      facturaUrl, facturaNombre, numeroFactura: numeroFactura || "", usuario: user.email, socio: socio || "",
     })));
-    setFecha(""); setOrigen(""); setSocio(""); setItems([emptyItemInsumo()]); setArchivo(null); setPreview(null); setImgB64(null);
+    setFecha(""); setOrigen(""); setSocio(""); setNumeroFactura(""); setItems([emptyItemInsumo()]); setArchivo(null); setPreview(null); setImgB64(null);
     setMensaje("Compra guardada ✓"); setTimeout(() => setMensaje(""), 2500);
   };
 
@@ -1618,6 +1620,10 @@ function InsumosView({ compras, api, stockInsumos, user }) {
             <label style={{ fontSize: 12, color: "#8A8570" }}>Socio que aporta (opcional)</label>
             <input className="cc-input" list="socios-insumos" value={socio} onChange={(e) => setSocio(e.target.value)} placeholder="Ej: Juan Pérez" />
             <datalist id="socios-insumos">{sociosSugeridos.map((s) => <option key={s} value={s} />)}</datalist>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>N° de factura (opcional)</label>
+            <input className="cc-input" value={numeroFactura} onChange={(e) => setNumeroFactura(e.target.value)} placeholder="Ej: A-0001234" />
           </div>
         </div>
 
@@ -1692,7 +1698,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
           <div className="flex items-center gap-2">
             {compras.length > 0 && <input className="cc-input" style={{ maxWidth: 280 }} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por insumo u origen..." />}
             {compras.length > 0 && (
-              <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel("compras_insumos", [{ nombre: "Compras", filas: compras.map((c) => ({ Fecha: c.fecha, Origen: c.origen, Socio: c.socio || "", Insumo: c.nombre, Cantidad: c.litros, Unidad: c.unidad || "Litros", "Precio por unidad": c.precioUnitario ?? (c.litros ? c.precio / c.litros : ""), "Precio total": c.precio })) }, { nombre: "Stock", filas: stockInsumos.map((i) => ({ Insumo: i.nombre, Unidad: i.unidad, Comprado: i.litrosComprados, Consumido: i.litrosConsumidos, Disponible: i.disponible, "Costo prom/unidad": i.costoPromedioPorLitro })) }])}>
+              <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel("compras_insumos", [{ nombre: "Compras", filas: compras.map((c) => ({ Fecha: c.fecha, Origen: c.origen, "N° factura": c.numeroFactura || "", Socio: c.socio || "", Insumo: c.nombre, Cantidad: c.litros, Unidad: c.unidad || "Litros", "Precio por unidad": c.precioUnitario ?? (c.litros ? c.precio / c.litros : ""), "Precio total": c.precio })) }, { nombre: "Stock", filas: stockInsumos.map((i) => ({ Insumo: i.nombre, Unidad: i.unidad, Comprado: i.litrosComprados, Consumido: i.litrosConsumidos, Disponible: i.disponible, "Costo prom/unidad": i.costoPromedioPorLitro })) }])}>
                 <Download size={17} /> Exportar Excel
               </button>
             )}
@@ -1701,18 +1707,19 @@ function InsumosView({ compras, api, stockInsumos, user }) {
         {compras.length === 0 ? <EmptyState icon={Receipt} title="Sin compras registradas" text="Registrá tu primera compra de insumos arriba." /> : (
           <div className="cc-card overflow-hidden">
             <table className="w-full" style={{ fontSize: 12.5 }}>
-              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Socio</th><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Litros</th><th className="px-3 py-2 text-right">Precio</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
+              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">N° factura</th><th className="px-3 py-2">Socio</th><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Litros</th><th className="px-3 py-2 text-right">Precio</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
               <tbody>
                 {[...compras]
                   .filter((c) => {
                     const q = busqueda.trim().toLowerCase();
                     if (!q) return true;
-                    return [c.nombre, c.origen].some((v) => (v || "").toLowerCase().includes(q));
+                    return [c.nombre, c.origen, c.numeroFactura].some((v) => (v || "").toLowerCase().includes(q));
                   })
                   .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((c) => (
                   <tr key={c.id} style={{ borderTop: "1px solid var(--line)" }}>
                     <td className="px-3 py-2 cc-mono">{c.fecha}</td>
                     <td className="px-3 py-2">{c.origen}</td>
+                    <td className="px-3 py-2 cc-mono" style={{ color: "#5A5647" }}>{c.numeroFactura || "-"}</td>
                     <td className="px-3 py-2" style={{ color: "#5A5647" }}>{c.socio || "-"}</td>
                     <td className="px-3 py-2">{c.nombre}</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmt(c.litros, 1)} {abrevUnidad(c.unidad)}</td>
