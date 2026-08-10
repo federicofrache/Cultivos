@@ -22,6 +22,8 @@ import {
 const CULTIVOS_VERANO = ["Soja", "Maíz", "Sorgo"];
 const CULTIVOS_INVIERNO = ["Colza", "Carinata", "Trigo", "Cebada", "Lupino", "Camelina"];
 const CAT_COLOR = { verano: "#C68A2E", invierno: "#3D6E8C" };
+const UNIDADES_INSUMO = ["Litros", "Unidades", "Kg", "Bolsas"];
+const abrevUnidad = (u) => ({ Litros: "L", Unidades: "u.", Kg: "kg", Bolsas: "b." }[u] || u || "L");
 const CATEGORIAS_GASTO = ["Insumos", "Servicio", "Renta", "Seguro", "Asesoramiento", "Otro"];
 const GASTO_CAT_COLOR = {
   Insumo: "#5B4B8A", Insumos: "#5B4B8A", Servicio: "#8A6D3B", Renta: "#8C3D3D", Seguro: "#3D6E8C", Asesoramiento: "#5C7A4E", Otro: "#7A7267",
@@ -304,9 +306,10 @@ export default function App() {
     const mapa = {};
     insumosCompras.forEach((c) => {
       const k = c.nombre;
-      if (!mapa[k]) mapa[k] = { nombre: k, litrosComprados: 0, costoComprado: 0, litrosConsumidos: 0 };
+      if (!mapa[k]) mapa[k] = { nombre: k, litrosComprados: 0, costoComprado: 0, litrosConsumidos: 0, unidad: c.unidad || "Litros" };
       mapa[k].litrosComprados += Number(c.litros || 0);
       mapa[k].costoComprado += Number(c.precio || 0);
+      mapa[k].unidad = c.unidad || "Litros"; // se queda con la unidad de la última compra cargada
     });
     gastosTodos.forEach((g) => {
       if (g.insumoNombre && mapa[g.insumoNombre]) mapa[g.insumoNombre].litrosConsumidos += Number(g.litrosUsados || 0);
@@ -414,7 +417,7 @@ export default function App() {
               { titulo: "Cultivos", items: cultivosRaw.filter((x) => x.eliminado), api: cultivosApi, campo: (x) => x.nombre },
               { titulo: "Campos", items: camposRaw.filter((x) => x.eliminado), api: camposApi, campo: (x) => x.nombre },
               { titulo: "Lotes", items: lotesRaw.filter((x) => x.eliminado), api: lotesApi, campo: (x) => x.nombre },
-              { titulo: "Insumos (compras)", items: insumosComprasRaw.filter((x) => x.eliminado), api: insumosApi, campo: (x) => `${x.nombre} — ${fmt(x.litros, 1)} L` },
+              { titulo: "Insumos (compras)", items: insumosComprasRaw.filter((x) => x.eliminado), api: insumosApi, campo: (x) => `${x.nombre} — ${fmt(x.litros, 1)} ${abrevUnidad(x.unidad)}` },
               { titulo: "Gastos", items: gastosRaw.filter((x) => x.eliminado), api: gastosApiGlobal, campo: (x) => `${x.origen} — ${fmtUSD(x.monto)}` },
               { titulo: "Ventas", items: ventasRaw.filter((x) => x.eliminado), api: ventasApiGlobal, campo: (x) => `${x.origen} — ${fmt(x.toneladas, 2)} tn` },
               { titulo: "Remitos", items: remitosRaw.filter((x) => x.eliminado), api: remitosApiGlobal, campo: (x) => `Remito ${x.remito}` },
@@ -1025,7 +1028,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       if (!insumoSel || !litrosUsados || !form.fecha) { alert("Elegí el insumo, los litros usados y la fecha."); return; }
       if (Number(litrosUsados) <= 0) { alert("Los litros usados tienen que ser un número mayor a 0."); return; }
       if (!editId && Number(litrosUsados) > (insumoElegido?.disponible || 0)) {
-        if (!confirm(`Solo hay ${fmt(insumoElegido?.disponible || 0, 1)} litros disponibles de ${insumoSel}. ¿Registrar igual el consumo?`)) return;
+        if (!confirm(`Solo hay ${fmt(insumoElegido?.disponible || 0, 1)} ${abrevUnidad(insumoElegido?.unidad)} disponibles de ${insumoSel}. ¿Registrar igual el consumo?`)) return;
       }
     } else if (!form.origen || !form.monto || !form.fecha) { alert("Completá al menos origen, monto y fecha."); return; }
     else if (Number(form.monto) <= 0) { alert("El monto tiene que ser un número mayor a 0."); return; }
@@ -1124,11 +1127,11 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
               <label style={{ fontSize: 12, color: "#8A8570" }}>Insumo</label>
               <select className="cc-input" value={insumoSel} onChange={(e) => setInsumoSel(e.target.value)}>
                 <option value="">Elegir...</option>
-                {stockInsumos.map((i) => <option key={i.nombre} value={i.nombre}>{i.nombre} ({fmt(i.disponible, 1)} L disp.)</option>)}
+                {stockInsumos.map((i) => <option key={i.nombre} value={i.nombre}>{i.nombre} ({fmt(i.disponible, 1)} {abrevUnidad(i.unidad)} disp.)</option>)}
               </select>
               {stockInsumos.length === 0 && <div style={{ fontSize: 11.5, color: "#8A8570" }}>No hay insumos cargados todavía — cargalos desde "Insumos" en el menú superior.</div>}
             </div>
-            <div><label style={{ fontSize: 12, color: "#8A8570" }}>Litros usados</label><input className="cc-input" type="number" value={litrosUsados} onChange={(e) => setLitrosUsados(e.target.value)} /></div>
+            <div><label style={{ fontSize: 12, color: "#8A8570" }}>Cantidad usada{insumoElegido ? ` (${abrevUnidad(insumoElegido.unidad)})` : ""}</label><input className="cc-input" type="number" value={litrosUsados} onChange={(e) => setLitrosUsados(e.target.value)} /></div>
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Costo estimado (FIFO)</label><input className="cc-input" value={`U$S ${fmt(montoCalculado, 2)}`} disabled /></div>
             <div>
@@ -1505,7 +1508,7 @@ function LotesView({ campo, lotes, api, sinCampo, campos = [] }) {
 /* ------------------------------------------------------------------ */
 /*  Insumos (compras + stock, referencia global)                        */
 /* ------------------------------------------------------------------ */
-const emptyItemInsumo = () => ({ nombre: "", litros: "", precio: "" });
+const emptyItemInsumo = () => ({ nombre: "", litros: "", unidad: "Litros", precioUnitario: "" });
 
 function InsumosView({ compras, api, stockInsumos, user }) {
   const [fecha, setFecha] = useState("");
@@ -1545,19 +1548,24 @@ function InsumosView({ compras, api, stockInsumos, user }) {
     try {
       const data = await askClaudeJSON([
         { type: "image", source: { type: "base64", media_type: mediaType, data: imgB64 } },
-        { type: "text", text: `Esta imagen es una factura de compra de insumos agropecuarios (agroquímicos, fertilizantes, combustible, etc.) en Uruguay. Devolvé SOLO un JSON (sin texto extra, sin markdown) con: {"origen":"nombre del proveedor","fecha":"YYYY-MM-DD o vacío","items":[{"nombre":"nombre del insumo","litros":number (cantidad total en litros o unidad equivalente),"precio":number (precio TOTAL pagado por esa cantidad, en dólares)}]}. Incluí un objeto en "items" por cada insumo distinto de la factura.` },
+        { type: "text", text: `Esta imagen es una factura de compra de insumos agropecuarios (agroquímicos, fertilizantes, combustible, etc.) en Uruguay. Devolvé SOLO un JSON (sin texto extra, sin markdown) con: {"origen":"nombre del proveedor","fecha":"YYYY-MM-DD o vacío","items":[{"nombre":"nombre del insumo","litros":number (cantidad total, en la unidad que corresponda),"unidad":"Litros, Unidades, Kg o Bolsas — la que más se ajuste al insumo","precio":number (precio TOTAL pagado por esa cantidad, en dólares)}]}. Incluí un objeto en "items" por cada insumo distinto de la factura.` },
       ]);
       setOrigen(data.origen || origen);
       if (data.fecha) setFecha(data.fecha);
-      if (Array.isArray(data.items) && data.items.length) setItems(data.items.map((it) => ({ nombre: it.nombre || "", litros: it.litros ?? "", precio: it.precio ?? "" })));
+      if (Array.isArray(data.items) && data.items.length) setItems(data.items.map((it) => {
+        const litros = it.litros ?? "";
+        const unidad = UNIDADES_INSUMO.includes(it.unidad) ? it.unidad : "Litros";
+        const precioUnitario = litros && it.precio ? (Number(it.precio) / Number(litros)) : "";
+        return { nombre: it.nombre || "", litros, unidad, precioUnitario };
+      }));
     } catch (e) { setError("No se pudo leer la factura automáticamente. Completá los ítems a mano."); }
     finally { setExtrayendo(false); }
   };
 
   const guardar = async () => {
-    const validos = items.filter((it) => it.nombre && it.litros && it.precio);
-    if (!fecha || !origen || !validos.length) { alert("Completá fecha, origen y al menos un insumo con nombre, litros y precio."); return; }
-    if (validos.some((it) => Number(it.litros) <= 0 || Number(it.precio) <= 0)) { alert("Los litros y el precio de cada insumo tienen que ser números mayores a 0."); return; }
+    const validos = items.filter((it) => it.nombre && it.litros && it.precioUnitario);
+    if (!fecha || !origen || !validos.length) { alert("Completá fecha, origen y al menos un insumo con nombre, cantidad y precio por unidad."); return; }
+    if (validos.some((it) => Number(it.litros) <= 0 || Number(it.precioUnitario) <= 0)) { alert("La cantidad y el precio por unidad de cada insumo tienen que ser números mayores a 0."); return; }
     let facturaUrl = null, facturaNombre = null;
     if (archivo) {
       setSubiendo(true);
@@ -1571,7 +1579,8 @@ function InsumosView({ compras, api, stockInsumos, user }) {
       setSubiendo(false);
     }
     await Promise.all(validos.map((it) => api.add({
-      fecha, origen, nombre: it.nombre, litros: Number(it.litros), precio: Number(it.precio),
+      fecha, origen, nombre: it.nombre, litros: Number(it.litros), unidad: it.unidad || "Litros",
+      precio: Number(it.litros) * Number(it.precioUnitario), precioUnitario: Number(it.precioUnitario),
       facturaUrl, facturaNombre, usuario: user.email, socio: socio || "",
     })));
     setFecha(""); setOrigen(""); setSocio(""); setItems([emptyItemInsumo()]); setArchivo(null); setPreview(null); setImgB64(null);
@@ -1615,16 +1624,25 @@ function InsumosView({ compras, api, stockInsumos, user }) {
         <div>
           <div style={{ fontSize: 12, color: "#8A8570", marginBottom: 4 }}>Insumos de esta factura</div>
           <div className="space-y-2">
-            {items.map((it, i) => (
-              <div key={i} className="flex gap-2 items-end flex-wrap">
-                <div style={{ flex: 2, minWidth: 160 }}>
-                  <input className="cc-input" list="nombres-insumos" placeholder="Nombre (ej: Glifosato)" value={it.nombre} onChange={(e) => setItem(i, { ...it, nombre: e.target.value })} />
+            {items.map((it, i) => {
+              const total = it.litros && it.precioUnitario ? Number(it.litros) * Number(it.precioUnitario) : null;
+              return (
+                <div key={i} className="flex gap-2 items-end flex-wrap">
+                  <div style={{ flex: 2, minWidth: 160 }}>
+                    <input className="cc-input" list="nombres-insumos" placeholder="Nombre (ej: Glifosato)" value={it.nombre} onChange={(e) => setItem(i, { ...it, nombre: e.target.value })} />
+                  </div>
+                  <div style={{ width: 110 }}><input className="cc-input" type="number" placeholder="Cantidad" value={it.litros} onChange={(e) => setItem(i, { ...it, litros: e.target.value })} /></div>
+                  <div style={{ width: 110 }}>
+                    <select className="cc-input" value={it.unidad || "Litros"} onChange={(e) => setItem(i, { ...it, unidad: e.target.value })}>
+                      {UNIDADES_INSUMO.map((u) => <option key={u} value={u}>{u}</option>)}
+                    </select>
+                  </div>
+                  <div style={{ width: 150 }}><input className="cc-input" type="number" placeholder={`U$S por ${abrevUnidad(it.unidad)}`} value={it.precioUnitario} onChange={(e) => setItem(i, { ...it, precioUnitario: e.target.value })} /></div>
+                  {total !== null && <div style={{ fontSize: 12.5, color: "#8A8570", minWidth: 110 }}>Total: <b style={{ color: "var(--ink)" }}>{fmtUSD(total)}</b></div>}
+                  {items.length > 1 && <button onClick={() => quitarItem(i)}><X size={19} color="var(--rust)" /></button>}
                 </div>
-                <div style={{ width: 130 }}><input className="cc-input" type="number" placeholder="Litros totales" value={it.litros} onChange={(e) => setItem(i, { ...it, litros: e.target.value })} /></div>
-                <div style={{ width: 130 }}><input className="cc-input" type="number" placeholder="Precio total U$S" value={it.precio} onChange={(e) => setItem(i, { ...it, precio: e.target.value })} /></div>
-                {items.length > 1 && <button onClick={() => quitarItem(i)}><X size={19} color="var(--rust)" /></button>}
-              </div>
-            ))}
+              );
+            })}
             <datalist id="nombres-insumos">{nombresSugeridos.map((n) => <option key={n} value={n} />)}</datalist>
           </div>
           <button className="cc-btn cc-btn-ghost mt-2" onClick={agregarItem}><Plus size={17} /> Agregar otro insumo a esta factura</button>
@@ -1651,14 +1669,14 @@ function InsumosView({ compras, api, stockInsumos, user }) {
         {stockInsumos.length === 0 ? <EmptyState icon={Boxes} title="Sin insumos cargados" text="Cuando registres una compra, el stock disponible va a aparecer acá." /> : (
           <div className="cc-card overflow-hidden">
             <table className="w-full" style={{ fontSize: 13 }}>
-              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Comprado</th><th className="px-3 py-2 text-right">Consumido</th><th className="px-3 py-2 text-right">Disponible</th><th className="px-3 py-2 text-right">Costo prom. / L</th></tr></thead>
+              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Comprado</th><th className="px-3 py-2 text-right">Consumido</th><th className="px-3 py-2 text-right">Disponible</th><th className="px-3 py-2 text-right">Costo prom. / unidad</th></tr></thead>
               <tbody>
                 {stockInsumos.sort((a, b) => a.nombre.localeCompare(b.nombre)).map((i) => (
                   <tr key={i.nombre} style={{ borderTop: "1px solid var(--line)", background: i.disponible <= 0 ? "#FBEAEA" : "transparent" }}>
                     <td className="px-3 py-2">{i.nombre} {i.disponible < 0 && <AlertCircle size={13} color="var(--rust)" style={{ display: "inline", marginLeft: 4, verticalAlign: "-2px" }} />}</td>
-                    <td className="px-3 py-2 text-right cc-mono">{fmt(i.litrosComprados, 1)} L</td>
-                    <td className="px-3 py-2 text-right cc-mono">{fmt(i.litrosConsumidos, 1)} L</td>
-                    <td className="px-3 py-2 text-right cc-mono" style={{ color: i.disponible <= 0 ? "var(--rust)" : "var(--soil-light)", fontWeight: 700 }}>{fmt(i.disponible, 1)} L</td>
+                    <td className="px-3 py-2 text-right cc-mono">{fmt(i.litrosComprados, 1)} {abrevUnidad(i.unidad)}</td>
+                    <td className="px-3 py-2 text-right cc-mono">{fmt(i.litrosConsumidos, 1)} {abrevUnidad(i.unidad)}</td>
+                    <td className="px-3 py-2 text-right cc-mono" style={{ color: i.disponible <= 0 ? "var(--rust)" : "var(--soil-light)", fontWeight: 700 }}>{fmt(i.disponible, 1)} {abrevUnidad(i.unidad)}</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmtUSD(i.costoPromedioPorLitro)}</td>
                   </tr>
                 ))}
@@ -1674,7 +1692,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
           <div className="flex items-center gap-2">
             {compras.length > 0 && <input className="cc-input" style={{ maxWidth: 280 }} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por insumo u origen..." />}
             {compras.length > 0 && (
-              <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel("compras_insumos", [{ nombre: "Compras", filas: compras.map((c) => ({ Fecha: c.fecha, Origen: c.origen, Socio: c.socio || "", Insumo: c.nombre, Litros: c.litros, Precio: c.precio })) }, { nombre: "Stock", filas: stockInsumos.map((i) => ({ Insumo: i.nombre, Comprado: i.litrosComprados, Consumido: i.litrosConsumidos, Disponible: i.disponible, "Costo prom/L": i.costoPromedioPorLitro })) }])}>
+              <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel("compras_insumos", [{ nombre: "Compras", filas: compras.map((c) => ({ Fecha: c.fecha, Origen: c.origen, Socio: c.socio || "", Insumo: c.nombre, Cantidad: c.litros, Unidad: c.unidad || "Litros", "Precio por unidad": c.precioUnitario ?? (c.litros ? c.precio / c.litros : ""), "Precio total": c.precio })) }, { nombre: "Stock", filas: stockInsumos.map((i) => ({ Insumo: i.nombre, Unidad: i.unidad, Comprado: i.litrosComprados, Consumido: i.litrosConsumidos, Disponible: i.disponible, "Costo prom/unidad": i.costoPromedioPorLitro })) }])}>
                 <Download size={17} /> Exportar Excel
               </button>
             )}
@@ -1697,7 +1715,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
                     <td className="px-3 py-2">{c.origen}</td>
                     <td className="px-3 py-2" style={{ color: "#5A5647" }}>{c.socio || "-"}</td>
                     <td className="px-3 py-2">{c.nombre}</td>
-                    <td className="px-3 py-2 text-right cc-mono">{fmt(c.litros, 1)} L</td>
+                    <td className="px-3 py-2 text-right cc-mono">{fmt(c.litros, 1)} {abrevUnidad(c.unidad)}</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmtUSD(c.precio)}</td>
                     <td className="px-3 py-2">{c.facturaUrl && <a href={c.facturaUrl} target="_blank" rel="noreferrer"><FileText size={17} color="var(--frost)" /></a>}</td>
                     <td className="px-3 py-2 text-right"><button onClick={() => eliminar(c.id)}><Trash2 size={16} color="var(--rust)" /></button></td>
