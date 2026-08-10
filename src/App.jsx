@@ -395,7 +395,7 @@ export default function App() {
             onOpen={(id) => setNav({ view: "cultivo", campaniaId: campaniaActual.id, cultivoId: id })} />
         )}
 
-        {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} />}
+        {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} campos={campos} />}
 
         {nav.view === "campos" && <CamposView campos={campos} api={camposApi} lotesApi={lotesApi} lotes={lotes} onOpen={(id) => setNav({ view: "lotes", campaniaId: null, cultivoId: null, campoId: id })} />}
 
@@ -587,7 +587,7 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
 /* ------------------------------------------------------------------ */
 /*  Detalle de un cultivo: Resumen / Gastos / Ventas / Remitos          */
 /* ------------------------------------------------------------------ */
-function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsumos, insumosCompras, gastosTodos }) {
+function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsumos, insumosCompras, gastosTodos, campos }) {
   const [tab, setTab] = useState("resumen");
   const [gastos, setGastos] = useState([]);
   const [ventas, setVentas] = useState([]);
@@ -771,7 +771,7 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
         </div>
       )}
 
-      {tab === "lotes" && <CultivoLotesTab cultivo={cultivo} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} superficie={superficie} />}
+      {tab === "lotes" && <CultivoLotesTab cultivo={cultivo} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} superficie={superficie} campos={campos} />}
 
       {tab === "gastos" && <GastosTab cultivo={cultivo} gastos={gastos} api={gastosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} superficie={superficie} />}
       {tab === "ventas" && <VentasTab cultivo={cultivo} ventas={ventas} api={ventasApi} />}
@@ -783,9 +783,10 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
 /* ------------------------------------------------------------------ */
 /*  Lotes asociados a un cultivo                                        */
 /* ------------------------------------------------------------------ */
-function CultivoLotesTab({ cultivo, lotes, lotesApi, cultivosApi, superficie }) {
+function CultivoLotesTab({ cultivo, lotes, lotesApi, cultivosApi, superficie, campos = [] }) {
   const [nombre, setNombre] = useState("");
   const [hectareas, setHectareas] = useState("");
+  const [filtroCampo, setFiltroCampo] = useState("todos");
   const loteIds = cultivo.loteIds || [];
 
   const toggle = async (loteId) => {
@@ -800,6 +801,17 @@ function CultivoLotesTab({ cultivo, lotes, lotesApi, cultivosApi, superficie }) 
     await cultivosApi.update(cultivo.id, { loteIds: [...loteIds, ref.id] });
     setNombre(""); setHectareas("");
   };
+
+  // Agrupar los lotes por campo, respetando el filtro elegido
+  const lotesFiltrados = filtroCampo === "todos" ? lotes : filtroCampo === "__sin_campo__" ? lotes.filter((l) => !l.campoId) : lotes.filter((l) => l.campoId === filtroCampo);
+  const gruposOrden = [...campos.map((c) => c.id), "__sin_campo__"];
+  const nombreCampo = (id) => (id === "__sin_campo__" ? "Sin campo asignado" : (campos.find((c) => c.id === id)?.nombre || "Campo eliminado"));
+  const grupos = {};
+  lotesFiltrados.forEach((l) => {
+    const key = l.campoId && campos.some((c) => c.id === l.campoId) ? l.campoId : "__sin_campo__";
+    if (!grupos[key]) grupos[key] = [];
+    grupos[key].push(l);
+  });
 
   return (
     <div className="space-y-5">
@@ -816,26 +828,48 @@ function CultivoLotesTab({ cultivo, lotes, lotesApi, cultivosApi, superficie }) 
           </div>
           <button className="cc-btn cc-btn-primary" onClick={agregarNuevoLote}><Plus size={17} /> Agregar y sumar</button>
         </div>
+        <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 6 }}>Se agrega sin campo asignado; podés ordenarlo después desde "Lotes" en el menú superior.</div>
       </div>
 
       <div className="cc-card p-4">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
           <div className="cc-h" style={{ fontSize: 15, fontWeight: 600 }}>Lotes de este cultivo</div>
           <div className="cc-mono" style={{ fontSize: 15, fontWeight: 700, color: "var(--frost)" }}>{fmt(superficie, 1)} ha totales</div>
         </div>
+
+        {campos.length > 0 && (
+          <div className="mb-3" style={{ maxWidth: 260 }}>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Filtrar por campo</label>
+            <select className="cc-input" value={filtroCampo} onChange={(e) => setFiltroCampo(e.target.value)}>
+              <option value="todos">Todos los campos</option>
+              {campos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+              {lotes.some((l) => !l.campoId) && <option value="__sin_campo__">Sin campo asignado</option>}
+            </select>
+          </div>
+        )}
+
         {lotes.length === 0 ? (
           <div style={{ fontSize: 13, color: "#8A8570" }}>Todavía no hay lotes cargados. Agregá uno arriba.</div>
+        ) : lotesFiltrados.length === 0 ? (
+          <div style={{ fontSize: 13, color: "#8A8570" }}>No hay lotes en ese campo.</div>
         ) : (
-          <div className="flex flex-wrap gap-2">
-            {lotes.map((l) => {
-              const sel = loteIds.includes(l.id);
-              return (
-                <button key={l.id} onClick={() => toggle(l.id)} className="cc-btn"
-                  style={{ padding: "8px 12px", fontSize: 13, background: sel ? "var(--soil)" : "#fff", color: sel ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>
-                  {sel ? <CheckCircle2 size={16} /> : <MapPin size={16} />} {l.nombre} ({fmt(l.hectareas, 1)} ha)
-                </button>
-              );
-            })}
+          <div className="space-y-4">
+            {gruposOrden.filter((k) => grupos[k]?.length).map((key) => (
+              <div key={key}>
+                {campos.length > 0 && <div style={{ fontSize: 12, fontWeight: 700, color: "#8A8570", marginBottom: 6, textTransform: "uppercase", letterSpacing: ".03em" }}>{nombreCampo(key)}</div>}
+                <div className="flex flex-wrap gap-2">
+                  {grupos[key].map((l) => {
+                    const sel = loteIds.includes(l.id);
+                    return (
+                      <button key={l.id} onClick={() => toggle(l.id)} className="cc-btn"
+                        style={{ padding: "8px 12px", fontSize: 13, background: sel ? "var(--soil)" : "#fff", color: sel ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>
+                        {sel ? <CheckCircle2 size={16} /> : <MapPin size={16} />} {l.nombre} ({fmt(l.hectareas, 1)} ha)
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         )}
         <div style={{ fontSize: 12, color: "#8A8570", marginTop: 10 }}>Tocá un lote para sumarlo o sacarlo de este cultivo. Un mismo lote puede pertenecer a distintos cultivos si corresponde (por ejemplo, cambió de campaña).</div>
