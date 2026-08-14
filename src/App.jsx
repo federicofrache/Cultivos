@@ -1669,6 +1669,10 @@ function CamposView({ campos, api, lotesApi, lotes, onOpen, puedeEditar = true }
 function LotesView({ campo, lotes, api, sinCampo, campos = [], puedeEditar = true }) {
   const [nombre, setNombre] = useState("");
   const [hectareas, setHectareas] = useState("");
+  const [editId, setEditId] = useState(null);
+  const [editNombre, setEditNombre] = useState("");
+  const [editHectareas, setEditHectareas] = useState("");
+
   const guardar = () => {
     if (!nombre.trim()) return;
     if (hectareas && Number(hectareas) <= 0) { alert("Las hectáreas tienen que ser un número mayor a 0."); return; }
@@ -1676,6 +1680,15 @@ function LotesView({ campo, lotes, api, sinCampo, campos = [], puedeEditar = tru
   };
   const eliminar = (id) => { if (confirm("Este lote se moverá a la papelera. ¿Continuar?")) api.remove(id); };
   const mover = (id, campoId) => { if (campoId) api.update(id, { campoId }); };
+
+  const empezarEdicion = (l) => { setEditId(l.id); setEditNombre(l.nombre); setEditHectareas(l.hectareas ?? ""); };
+  const cancelarEdicion = () => { setEditId(null); setEditNombre(""); setEditHectareas(""); };
+  const guardarEdicion = async (id) => {
+    if (!editNombre.trim()) { alert("El nombre no puede quedar vacío."); return; }
+    if (editHectareas && Number(editHectareas) <= 0) { alert("Las hectáreas tienen que ser un número mayor a 0."); return; }
+    await api.update(id, { nombre: editNombre.trim(), hectareas: editHectareas ? Number(editHectareas) : null });
+    cancelarEdicion();
+  };
 
   return (
     <div className="space-y-5">
@@ -1696,22 +1709,42 @@ function LotesView({ campo, lotes, api, sinCampo, campos = [], puedeEditar = tru
       {lotes.length === 0 ? <EmptyState icon={MapPin} title="No hay lotes cargados en este campo" text="Los lotes son de referencia: van a aparecer como sugerencia al cargar el 'Campo' de cada remito." /> : (
         <div className="cc-card overflow-hidden">
           <table className="w-full" style={{ fontSize: 13 }}>
-            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-4 py-2">Lote</th><th className="px-4 py-2">Hectáreas</th>{sinCampo && puedeEditar && <th className="px-4 py-2">Asignar a campo</th>}<th className="px-4 py-2"></th></tr></thead>
-            <tbody>{lotes.map((l) => (
-              <tr key={l.id} style={{ borderTop: "1px solid var(--line)" }}>
-                <td className="px-4 py-2">{l.nombre}</td>
-                <td className="px-4 py-2 cc-mono">{l.hectareas ? `${fmt(l.hectareas, 1)} ha` : "-"}</td>
-                {sinCampo && puedeEditar && (
-                  <td className="px-4 py-2">
-                    <select className="cc-input" style={{ padding: "5px 8px", fontSize: 12.5 }} defaultValue="" onChange={(e) => mover(l.id, e.target.value)}>
-                      <option value="" disabled>Elegir campo…</option>
-                      {campos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
-                    </select>
-                  </td>
+            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-4 py-2">Lote</th><th className="px-4 py-2">Hectáreas</th>{sinCampo && puedeEditar && <th className="px-4 py-2">Asignar a campo</th>}<th className="px-4 py-2" colSpan={2}></th></tr></thead>
+            <tbody>{lotes.map((l) => {
+              const enEdicion = editId === l.id;
+              return (
+              <tr key={l.id} style={{ borderTop: "1px solid var(--line)", background: enEdicion ? "#FDF3E0" : "transparent" }}>
+                {enEdicion ? (
+                  <>
+                    <td className="px-4 py-2"><input className="cc-input" style={{ padding: "5px 8px", fontSize: 12.5 }} value={editNombre} onChange={(e) => setEditNombre(e.target.value)} /></td>
+                    <td className="px-4 py-2"><input className="cc-input" style={{ padding: "5px 8px", fontSize: 12.5, width: 100 }} type="number" value={editHectareas} onChange={(e) => setEditHectareas(e.target.value)} /></td>
+                    {sinCampo && puedeEditar && <td className="px-4 py-2"></td>}
+                    <td className="px-4 py-2 text-right" colSpan={2}>
+                      <div className="flex gap-2 justify-end">
+                        <button onClick={() => guardarEdicion(l.id)} title="Guardar"><CheckCircle2 size={17} color="var(--soil-light)" /></button>
+                        <button onClick={cancelarEdicion} title="Cancelar"><X size={17} color="var(--rust)" /></button>
+                      </div>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className="px-4 py-2">{l.nombre}</td>
+                    <td className="px-4 py-2 cc-mono">{l.hectareas ? `${fmt(l.hectareas, 1)} ha` : "-"}</td>
+                    {sinCampo && puedeEditar && (
+                      <td className="px-4 py-2">
+                        <select className="cc-input" style={{ padding: "5px 8px", fontSize: 12.5 }} defaultValue="" onChange={(e) => mover(l.id, e.target.value)}>
+                          <option value="" disabled>Elegir campo…</option>
+                          {campos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                        </select>
+                      </td>
+                    )}
+                    <td className="px-4 py-2 text-right">{puedeEditar && <button onClick={() => empezarEdicion(l)} title="Editar"><Pencil size={16} color="var(--frost)" /></button>}</td>
+                    <td className="px-4 py-2 text-right">{puedeEditar && <button onClick={() => eliminar(l.id)} title="Eliminar"><Trash2 size={17} color="var(--rust)" /></button>}</td>
+                  </>
                 )}
-                <td className="px-4 py-2 text-right">{puedeEditar && <button onClick={() => eliminar(l.id)}><Trash2 size={17} color="var(--rust)" /></button>}</td>
               </tr>
-            ))}</tbody>
+            );
+            })}</tbody>
           </table>
         </div>
       )}
