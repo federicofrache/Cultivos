@@ -1603,6 +1603,7 @@ function UsuariosView({ usuarios, miEmail }) {
 /* ------------------------------------------------------------------ */
 function CamposView({ campos, api, lotesApi, lotes, onOpen, puedeEditar = true }) {
   const [nombre, setNombre] = useState("");
+  const lotesSinCampo = lotes.filter((l) => !l.campoId);
 
   const crear = () => { if (!nombre.trim()) return; api.add({ nombre: nombre.trim() }); setNombre(""); };
   const eliminar = (id) => {
