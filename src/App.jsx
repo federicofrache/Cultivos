@@ -535,9 +535,10 @@ function CampaniasView({ campanias, api, cultivosApi, cultivos, onOpen }) {
 function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
   const [categoria, setCategoria] = useState("verano");
   const [nombre, setNombre] = useState(CULTIVOS_VERANO[0]);
+  const [nombreCustom, setNombreCustom] = useState("");
   const opciones = categoria === "verano" ? CULTIVOS_VERANO : CULTIVOS_INVIERNO;
 
-  const crear = () => api.add({ campaniaId: campania.id, categoria, nombre });
+  const crear = () => { api.add({ campaniaId: campania.id, categoria, tipo: nombre, nombre: nombreCustom.trim() || nombre }); setNombreCustom(""); };
   const eliminar = (id) => { if (confirm("Este cultivo se moverá a la papelera (se puede restaurar después). ¿Continuar?")) api.remove(id); };
 
   return (
@@ -556,6 +557,11 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
             <select className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)}>{opciones.map((c) => <option key={c} value={c}>{c}</option>)}</select>
           </div>
           <button className="cc-btn cc-btn-primary" onClick={crear}><Plus size={18} /> Agregar</button>
+        </div>
+        <div style={{ marginTop: 12, maxWidth: 320 }}>
+          <label style={{ fontSize: 12, color: "#8A8570" }}>Nombre para este cultivo (opcional)</label>
+          <input className="cc-input" value={nombreCustom} onChange={(e) => setNombreCustom(e.target.value)} placeholder={`Ej: ${nombre} 1ra, ${nombre} Norte...`} />
+          <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 4 }}>Si lo dejás vacío, se usa "{nombre}". Útil si vas a tener más de un lote de {nombre} en la misma campaña.</div>
         </div>
       </div>
 
@@ -1815,7 +1821,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, lotes, insumo
     const totalIngresos = ventasCultivo.reduce((s, v) => s + Number(v.toneladas || 0) * Number(v.dolaresPorTonelada || 0), 0);
     const superficie = lotes.filter((l) => (c.loteIds || []).includes(l.id)).reduce((s, l) => s + Number(l.hectareas || 0), 0);
     return {
-      cultivoId: c.id, campaniaId: c.campaniaId, cultivoNombre: c.nombre, categoria: c.categoria,
+      cultivoId: c.id, campaniaId: c.campaniaId, cultivoNombre: c.nombre, tipoCultivo: c.tipo || c.nombre, categoria: c.categoria,
       campaniaNombre: campania ? (campania.nombre || campania.anio) : "—", anio: campania?.anio || 0,
       superficie, totalGastos, totalIngresos, margen: totalIngresos - totalGastos,
       costoPorHa: superficie ? totalGastos / superficie : null, margenPorHa: superficie ? (totalIngresos - totalGastos) / superficie : null,
@@ -1826,9 +1832,9 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, lotes, insumo
   const totalIngresosGeneral = filas.reduce((s, f) => s + f.totalIngresos, 0);
   const margenGeneral = totalIngresosGeneral - totalGastosGeneral;
 
-  // Comparar el mismo cultivo (por nombre) entre distintas campañas/años
+  // Comparar el mismo tipo de cultivo (Soja, Maíz, etc — no el nombre personalizado) entre distintas campañas/años
   const porCultivoNombre = {};
-  filas.forEach((f) => { (porCultivoNombre[f.cultivoNombre] ||= []).push(f); });
+  filas.forEach((f) => { (porCultivoNombre[f.tipoCultivo] ||= []).push(f); });
   const comparables = Object.entries(porCultivoNombre).filter(([, arr]) => arr.length > 1);
 
   // Aporte por socio, combinando gastos de todos los cultivos + compras de insumos
