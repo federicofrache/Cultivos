@@ -5,15 +5,18 @@ import {
   signOut, sendPasswordResetEmail,
 } from "firebase/auth";
 import {
-  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, where,
+  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, where, setDoc,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 import * as XLSX from "xlsx";
 import {
+  BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
+} from "recharts";
+import {
   Sprout, Snowflake, Sun, Wheat, Receipt, Mic, Camera, MapPin, TrendingUp,
   TrendingDown, Plus, Trash2, Loader2, LogOut, ChevronRight, ChevronLeft,
   Truck, DollarSign, FileText, AlertCircle, CheckCircle2, Paperclip, Pencil, X, Package, Boxes, Copy, Search,
-  Download, RotateCcw, Trash, LayoutDashboard, Menu,
+  Download, RotateCcw, Trash, LayoutDashboard, Menu, Users,
 } from "lucide-react";
 
 /* ------------------------------------------------------------------ */
@@ -241,6 +244,7 @@ export default function App() {
   const [gastosRaw, setGastosRaw] = useState([]);
   const [ventasRaw, setVentasRaw] = useState([]);
   const [remitosRaw, setRemitosRaw] = useState([]);
+  const [usuariosRaw, setUsuariosRaw] = useState([]);
   const [nav, setNav] = useState({ view: "campanias", campaniaId: null, cultivoId: null, campoId: null });
   const [menuMovilAbierto, setMenuMovilAbierto] = useState(false);
 
@@ -256,8 +260,16 @@ export default function App() {
     const u6 = onSnapshot(collection(db, "ventas"), (s) => setVentasRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
     const u7 = onSnapshot(collection(db, "remitos"), (s) => setRemitosRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
     const u8 = onSnapshot(collection(db, "campos"), (s) => setCamposRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); };
+    const u9 = onSnapshot(collection(db, "usuarios"), (s) => setUsuariosRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); };
   }, [user]);
+
+  // Rol del usuario actual: si no hay un documento de rol para su email, se lo trata como editor
+  // (evita que alguien quede bloqueado por accidente al activar este sistema por primera vez)
+  const miUsuario = usuariosRaw.find((u) => u.id === user?.email);
+  const miRol = miUsuario?.rol || "admin";
+  const puedeEditar = miRol !== "lectura";
+  const esAdmin = miRol === "admin";
 
   // Versiones "activas" (sin lo que está en la papelera), que usa el resto de la app
   const campanias = campaniasRaw.filter((x) => !x.eliminado);
@@ -352,6 +364,11 @@ export default function App() {
             <button onClick={() => setNav({ view: "papelera", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
               <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: "var(--rust)" }}><Trash size={13} color="#fff" /></span> Papelera
             </button>
+            {esAdmin && (
+              <button onClick={() => setNav({ view: "usuarios", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: "var(--soil-light)" }}><Users size={13} color="#fff" /></span> Usuarios
+              </button>
+            )}
             <span style={{ color: "#D8DECB", fontSize: 12.5 }}>{user.email}</span>
             <button onClick={() => signOut(auth)} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}><LogOut size={16} /> Salir</button>
           </div>
@@ -370,6 +387,7 @@ export default function App() {
               { label: "Insumos", icon: Package, color: "var(--gold)", onClick: () => setNav({ view: "insumos", campaniaId: null, cultivoId: null }) },
               { label: "Lotes", icon: MapPin, color: "var(--soil-light)", onClick: () => setNav({ view: "campos", campaniaId: null, cultivoId: null, campoId: null }) },
               { label: "Papelera", icon: Trash, color: "var(--rust)", onClick: () => setNav({ view: "papelera", campaniaId: null, cultivoId: null }) },
+              ...(esAdmin ? [{ label: "Usuarios", icon: Users, color: "var(--soil-light)", onClick: () => setNav({ view: "usuarios", campaniaId: null, cultivoId: null }) }] : []),
             ].map((it) => {
               const Icon = it.icon;
               return (
@@ -388,27 +406,35 @@ export default function App() {
       <main className="max-w-6xl mx-auto px-6 py-6">
         <Breadcrumb nav={nav} setNav={setNav} campania={campaniaActual} cultivo={cultivoActual} campo={campoActual} />
 
-        {nav.view === "campanias" && <CampaniasView campanias={campanias} api={campaniasApi} cultivosApi={cultivosApi} cultivos={cultivos} onOpen={(id) => setNav({ view: "cultivos", campaniaId: id, cultivoId: null })} />}
+        {!puedeEditar && nav.view !== "papelera" && (
+          <div className="flex items-center gap-2 mb-4" style={{ background: "#FDF3E0", border: "1px solid var(--gold)", borderRadius: 8, padding: "8px 12px", fontSize: 12.5, color: "#7A5A1E" }}>
+            <AlertCircle size={16} /> Estás con acceso de <b>solo lectura</b>: podés ver todo, pero no crear ni borrar datos.
+          </div>
+        )}
+
+        {nav.view === "campanias" && <CampaniasView campanias={campanias} api={campaniasApi} cultivosApi={cultivosApi} cultivos={cultivos} onOpen={(id) => setNav({ view: "cultivos", campaniaId: id, cultivoId: null })} puedeEditar={puedeEditar} />}
 
         {nav.view === "cultivos" && campaniaActual && (
           <CultivosDeCampania campania={campaniaActual} cultivos={cultivos.filter((c) => c.campaniaId === campaniaActual.id)} api={cultivosApi}
-            onOpen={(id) => setNav({ view: "cultivo", campaniaId: campaniaActual.id, cultivoId: id })} />
+            onOpen={(id) => setNav({ view: "cultivo", campaniaId: campaniaActual.id, cultivoId: id })} puedeEditar={puedeEditar} />
         )}
 
-        {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} campos={campos} />}
+        {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} campos={campos} puedeEditar={puedeEditar} />}
 
-        {nav.view === "campos" && <CamposView campos={campos} api={camposApi} lotesApi={lotesApi} lotes={lotes} onOpen={(id) => setNav({ view: "lotes", campaniaId: null, cultivoId: null, campoId: id })} />}
+        {nav.view === "campos" && <CamposView campos={campos} api={camposApi} lotesApi={lotesApi} lotes={lotes} onOpen={(id) => setNav({ view: "lotes", campaniaId: null, cultivoId: null, campoId: id })} puedeEditar={puedeEditar} />}
 
         {nav.view === "lotes" && campoActual && (
-          <LotesView campo={campoActual} lotes={campoActual.id === "__sin_campo__" ? lotes.filter((l) => !l.campoId) : lotes.filter((l) => l.campoId === campoActual.id)} api={lotesApi} sinCampo={campoActual.id === "__sin_campo__"} campos={campos} />
+          <LotesView campo={campoActual} lotes={campoActual.id === "__sin_campo__" ? lotes.filter((l) => !l.campoId) : lotes.filter((l) => l.campoId === campoActual.id)} api={lotesApi} sinCampo={campoActual.id === "__sin_campo__"} campos={campos} puedeEditar={puedeEditar} />
         )}
 
-        {nav.view === "insumos" && <InsumosView compras={insumosCompras} api={insumosApi} stockInsumos={stockInsumos} user={user} />}
+        {nav.view === "insumos" && <InsumosView compras={insumosCompras} api={insumosApi} stockInsumos={stockInsumos} user={user} puedeEditar={puedeEditar} />}
 
         {nav.view === "resumen_general" && (
-          <ResumenGeneralView campanias={campanias} cultivos={cultivos} gastos={gastosTodos} ventas={ventasTodas} lotes={lotes} insumosCompras={insumosCompras}
+          <ResumenGeneralView campanias={campanias} cultivos={cultivos} gastos={gastosTodos} ventas={ventasTodas} remitos={remitosTodos} lotes={lotes} insumosCompras={insumosCompras}
             onOpenCultivo={(cultivoId, campaniaId) => setNav({ view: "cultivo", campaniaId, cultivoId })} />
         )}
+
+        {nav.view === "usuarios" && esAdmin && <UsuariosView usuarios={usuariosRaw} miEmail={user.email} />}
 
         {nav.view === "papelera" && (
           <PapeleraView
@@ -422,6 +448,7 @@ export default function App() {
               { titulo: "Ventas", items: ventasRaw.filter((x) => x.eliminado), api: ventasApiGlobal, campo: (x) => `${x.origen} — ${fmt(x.toneladas, 2)} tn` },
               { titulo: "Remitos", items: remitosRaw.filter((x) => x.eliminado), api: remitosApiGlobal, campo: (x) => `Remito ${x.remito}` },
             ]}
+            puedeEditar={puedeEditar}
           />
         )}
       </main>
@@ -430,7 +457,7 @@ export default function App() {
 }
 
 function Breadcrumb({ nav, setNav, campania, cultivo, campo }) {
-  if (["campanias", "campos", "insumos", "resumen_general", "papelera"].includes(nav.view)) return null;
+  if (["campanias", "campos", "insumos", "resumen_general", "papelera", "usuarios"].includes(nav.view)) return null;
   return (
     <div className="flex items-center gap-1 mb-4" style={{ fontSize: 13, color: "#8A8570" }}>
       {nav.view === "lotes" ? (
@@ -479,7 +506,7 @@ function EmptyState({ icon: Icon, title, text }) {
 /* ------------------------------------------------------------------ */
 /*  Campañas                                                            */
 /* ------------------------------------------------------------------ */
-function CampaniasView({ campanias, api, cultivosApi, cultivos, onOpen }) {
+function CampaniasView({ campanias, api, cultivosApi, cultivos, onOpen, puedeEditar = true }) {
   const [anio, setAnio] = useState(new Date().getFullYear());
   const [nombre, setNombre] = useState("");
 
@@ -495,14 +522,16 @@ function CampaniasView({ campanias, api, cultivosApi, cultivos, onOpen }) {
 
   return (
     <div className="space-y-5">
-      <div className="cc-card p-4">
-        <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Nueva campaña</div>
-        <div className="flex gap-3 flex-wrap items-end">
-          <div style={{ width: 140 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Año</label><input className="cc-input" type="number" value={anio} onChange={(e) => setAnio(e.target.value)} /></div>
-          <div style={{ flex: 1, minWidth: 180 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Nombre (opcional)</label><input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={`Campaña ${anio}`} /></div>
-          <button className="cc-btn cc-btn-primary" onClick={crear}><Plus size={18} /> Crear</button>
+      {puedeEditar && (
+        <div className="cc-card p-4">
+          <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Nueva campaña</div>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div style={{ width: 140 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Año</label><input className="cc-input" type="number" value={anio} onChange={(e) => setAnio(e.target.value)} /></div>
+            <div style={{ flex: 1, minWidth: 180 }}><label style={{ fontSize: 12, color: "#8A8570" }}>Nombre (opcional)</label><input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder={`Campaña ${anio}`} /></div>
+            <button className="cc-btn cc-btn-primary" onClick={crear}><Plus size={18} /> Crear</button>
+          </div>
         </div>
-      </div>
+      )}
 
       {campanias.length === 0 ? (
         <EmptyState icon={Sprout} title="No hay campañas todavía" text="Creá tu primera campaña (por ejemplo, por año) y luego agregale los cultivos que sembraste." />
@@ -517,7 +546,7 @@ function CampaniasView({ campanias, api, cultivosApi, cultivos, onOpen }) {
                     <div className="cc-h" style={{ fontSize: 18, fontWeight: 600 }}>{c.nombre || c.anio}</div>
                     <div style={{ fontSize: 12, color: "#8A8570" }}>{nCultivos} cultivo{nCultivos !== 1 ? "s" : ""}</div>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); eliminar(c.id); }}><Trash2 size={17} color="var(--rust)" /></button>
+                  {puedeEditar && <button onClick={(e) => { e.stopPropagation(); eliminar(c.id); }}><Trash2 size={17} color="var(--rust)" /></button>}
                 </div>
                 <div className="flex items-center gap-1 mt-3" style={{ color: "var(--frost)", fontSize: 12.5, fontWeight: 600 }}>Ver cultivos <ChevronRight size={16} /></div>
               </div>
@@ -532,7 +561,7 @@ function CampaniasView({ campanias, api, cultivosApi, cultivos, onOpen }) {
 /* ------------------------------------------------------------------ */
 /*  Cultivos de una campaña                                             */
 /* ------------------------------------------------------------------ */
-function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
+function CultivosDeCampania({ campania, cultivos, api, onOpen, puedeEditar = true }) {
   const [categoria, setCategoria] = useState("verano");
   const [nombre, setNombre] = useState(CULTIVOS_VERANO[0]);
   const [nombreCustom, setNombreCustom] = useState("");
@@ -543,27 +572,29 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
 
   return (
     <div className="space-y-5">
-      <div className="cc-card p-4">
-        <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Agregar cultivo a {campania.nombre || campania.anio}</div>
-        <div className="flex gap-3 flex-wrap items-end">
-          <div style={{ width: 160 }}>
-            <label style={{ fontSize: 12, color: "#8A8570" }}>Categoría</label>
-            <select className="cc-input" value={categoria} onChange={(e) => { setCategoria(e.target.value); setNombre(e.target.value === "verano" ? CULTIVOS_VERANO[0] : CULTIVOS_INVIERNO[0]); }}>
-              <option value="verano">Verano</option><option value="invierno">Invierno</option>
-            </select>
+      {puedeEditar && (
+        <div className="cc-card p-4">
+          <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Agregar cultivo a {campania.nombre || campania.anio}</div>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div style={{ width: 160 }}>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Categoría</label>
+              <select className="cc-input" value={categoria} onChange={(e) => { setCategoria(e.target.value); setNombre(e.target.value === "verano" ? CULTIVOS_VERANO[0] : CULTIVOS_INVIERNO[0]); }}>
+                <option value="verano">Verano</option><option value="invierno">Invierno</option>
+              </select>
+            </div>
+            <div style={{ width: 180 }}>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Cultivo</label>
+              <select className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)}>{opciones.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+            </div>
+            <button className="cc-btn cc-btn-primary" onClick={crear}><Plus size={18} /> Agregar</button>
           </div>
-          <div style={{ width: 180 }}>
-            <label style={{ fontSize: 12, color: "#8A8570" }}>Cultivo</label>
-            <select className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)}>{opciones.map((c) => <option key={c} value={c}>{c}</option>)}</select>
+          <div style={{ marginTop: 12, maxWidth: 320 }}>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Nombre para este cultivo (opcional)</label>
+            <input className="cc-input" value={nombreCustom} onChange={(e) => setNombreCustom(e.target.value)} placeholder={`Ej: ${nombre} 1ra, ${nombre} Norte...`} />
+            <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 4 }}>Si lo dejás vacío, se usa "{nombre}". Útil si vas a tener más de un lote de {nombre} en la misma campaña.</div>
           </div>
-          <button className="cc-btn cc-btn-primary" onClick={crear}><Plus size={18} /> Agregar</button>
         </div>
-        <div style={{ marginTop: 12, maxWidth: 320 }}>
-          <label style={{ fontSize: 12, color: "#8A8570" }}>Nombre para este cultivo (opcional)</label>
-          <input className="cc-input" value={nombreCustom} onChange={(e) => setNombreCustom(e.target.value)} placeholder={`Ej: ${nombre} 1ra, ${nombre} Norte...`} />
-          <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 4 }}>Si lo dejás vacío, se usa "{nombre}". Útil si vas a tener más de un lote de {nombre} en la misma campaña.</div>
-        </div>
-      </div>
+      )}
 
       {cultivos.length === 0 ? (
         <EmptyState icon={Sprout} title="Todavía no hay cultivos en esta campaña" text="Agregá los cultivos sembrados (ej: Soja, Trigo) para empezar a cargar sus gastos e ingresos." />
@@ -578,7 +609,7 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
                 </div>
                 <div className="flex items-center gap-2">
                   {c.categoria === "verano" ? <Sun color="var(--gold)" size={21} /> : <Snowflake color="var(--frost)" size={21} />}
-                  <button onClick={(e) => { e.stopPropagation(); eliminar(c.id); }}><Trash2 size={16} color="var(--rust)" /></button>
+                  {puedeEditar && <button onClick={(e) => { e.stopPropagation(); eliminar(c.id); }}><Trash2 size={16} color="var(--rust)" /></button>}
                 </div>
               </div>
               <div className="flex items-center gap-1 mt-3" style={{ color: "var(--frost)", fontSize: 12.5, fontWeight: 600 }}>Gastos e ingresos <ChevronRight size={16} /></div>
@@ -593,7 +624,7 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen }) {
 /* ------------------------------------------------------------------ */
 /*  Detalle de un cultivo: Resumen / Gastos / Ventas / Remitos          */
 /* ------------------------------------------------------------------ */
-function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsumos, insumosCompras, gastosTodos, campos }) {
+function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsumos, insumosCompras, gastosTodos, campos, puedeEditar = true }) {
   const [tab, setTab] = useState("resumen");
   const [gastos, setGastos] = useState([]);
   const [ventas, setVentas] = useState([]);
@@ -636,6 +667,7 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
   const balancePorHa = costoPorHa !== null && ingresoPorHa !== null ? ingresoPorHa - costoPorHa : null;
   const precioPromedioVenta = totalToneladasVentas ? totalIngresos / totalToneladasVentas : null;
   const rindeEquilibrio = costoPorHa !== null && precioPromedioVenta ? costoPorHa / precioPromedioVenta : null;
+  const rendimientoReal = superficie && totalTonRemitos ? totalTonRemitos / superficie : null;
 
   const TABS = [
     { id: "resumen", label: "Resumen", icon: TrendingUp, color: "var(--frost)" },
@@ -685,9 +717,17 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
                 <MiniStat label="Ingreso / ha" value={fmtUSD(ingresoPorHa)} />
                 <MiniStat label="Balance / ha" value={fmtUSD(balancePorHa)} />
                 <MiniStat label="Precio prom. venta" value={precioPromedioVenta ? fmtUSD(precioPromedioVenta) + "/tn" : "-"} />
+                <MiniStat label="Rendimiento real" value={rendimientoReal !== null ? `${fmt(rendimientoReal, 2)} tn/ha` : "-"} sub={rendimientoReal !== null ? `${fmt(rendimientoReal * 1000, 0)} kg/ha` : "Cargá remitos para calcularlo"} />
                 <MiniStat label="Rinde de equilibrio" value={rindeEquilibrio !== null ? `${fmt(rindeEquilibrio, 2)} tn/ha` : "-"} />
               </div>
               {rindeEquilibrio === null && <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 6 }}>Cargá al menos una venta para calcular el rinde de equilibrio.</div>}
+              {rendimientoReal !== null && rindeEquilibrio !== null && (
+                <div style={{ fontSize: 11.5, color: rendimientoReal >= rindeEquilibrio ? "var(--soil-light)" : "var(--rust)", marginTop: 6, fontWeight: 600 }}>
+                  {rendimientoReal >= rindeEquilibrio
+                    ? `Vas ${fmt(rendimientoReal - rindeEquilibrio, 2)} tn/ha por encima del rinde de equilibrio.`
+                    : `Vas ${fmt(rindeEquilibrio - rendimientoReal, 2)} tn/ha por debajo del rinde de equilibrio.`}
+                </div>
+              )}
             </div>
           )}
 
@@ -777,11 +817,11 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
         </div>
       )}
 
-      {tab === "lotes" && <CultivoLotesTab cultivo={cultivo} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} superficie={superficie} campos={campos} />}
+      {tab === "lotes" && <CultivoLotesTab cultivo={cultivo} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} superficie={superficie} campos={campos} puedeEditar={puedeEditar} />}
 
-      {tab === "gastos" && <GastosTab cultivo={cultivo} gastos={gastos} api={gastosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} superficie={superficie} />}
-      {tab === "ventas" && <VentasTab cultivo={cultivo} ventas={ventas} api={ventasApi} />}
-      {tab === "remitos" && <RemitosTab cultivo={cultivo} remitos={remitos} api={remitosApi} lotes={lotes} totalToneladasVentas={totalToneladasVentas} />}
+      {tab === "gastos" && <GastosTab cultivo={cultivo} gastos={gastos} api={gastosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} superficie={superficie} puedeEditar={puedeEditar} />}
+      {tab === "ventas" && <VentasTab cultivo={cultivo} ventas={ventas} api={ventasApi} puedeEditar={puedeEditar} />}
+      {tab === "remitos" && <RemitosTab cultivo={cultivo} remitos={remitos} api={remitosApi} lotes={lotes} totalToneladasVentas={totalToneladasVentas} puedeEditar={puedeEditar} />}
     </div>
   );
 }
@@ -789,7 +829,7 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
 /* ------------------------------------------------------------------ */
 /*  Lotes asociados a un cultivo                                        */
 /* ------------------------------------------------------------------ */
-function CultivoLotesTab({ cultivo, lotes, lotesApi, cultivosApi, superficie, campos = [] }) {
+function CultivoLotesTab({ cultivo, lotes, lotesApi, cultivosApi, superficie, campos = [], puedeEditar = true }) {
   const [nombre, setNombre] = useState("");
   const [hectareas, setHectareas] = useState("");
   const [filtroCampo, setFiltroCampo] = useState("todos");
@@ -821,21 +861,23 @@ function CultivoLotesTab({ cultivo, lotes, lotesApi, cultivosApi, superficie, ca
 
   return (
     <div className="space-y-5">
-      <div className="cc-card p-4">
-        <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Agregar un lote nuevo y sumarlo a este cultivo</div>
-        <div className="flex gap-3 flex-wrap items-end">
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <label style={{ fontSize: 12, color: "#8A8570" }}>Nombre del lote</label>
-            <input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Lote 4 - La Loma" />
+      {puedeEditar && (
+        <div className="cc-card p-4">
+          <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Agregar un lote nuevo y sumarlo a este cultivo</div>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Nombre del lote</label>
+              <input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Lote 4 - La Loma" />
+            </div>
+            <div style={{ width: 150 }}>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Hectáreas</label>
+              <input className="cc-input" type="number" value={hectareas} onChange={(e) => setHectareas(e.target.value)} placeholder="93" />
+            </div>
+            <button className="cc-btn cc-btn-primary" onClick={agregarNuevoLote}><Plus size={17} /> Agregar y sumar</button>
           </div>
-          <div style={{ width: 150 }}>
-            <label style={{ fontSize: 12, color: "#8A8570" }}>Hectáreas</label>
-            <input className="cc-input" type="number" value={hectareas} onChange={(e) => setHectareas(e.target.value)} placeholder="93" />
-          </div>
-          <button className="cc-btn cc-btn-primary" onClick={agregarNuevoLote}><Plus size={17} /> Agregar y sumar</button>
+          <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 6 }}>Se agrega sin campo asignado; podés ordenarlo después desde "Lotes" en el menú superior.</div>
         </div>
-        <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 6 }}>Se agrega sin campo asignado; podés ordenarlo después desde "Lotes" en el menú superior.</div>
-      </div>
+      )}
 
       <div className="cc-card p-4">
         <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
@@ -867,7 +909,7 @@ function CultivoLotesTab({ cultivo, lotes, lotesApi, cultivosApi, superficie, ca
                   {grupos[key].map((l) => {
                     const sel = loteIds.includes(l.id);
                     return (
-                      <button key={l.id} onClick={() => toggle(l.id)} className="cc-btn"
+                      <button key={l.id} onClick={() => puedeEditar && toggle(l.id)} disabled={!puedeEditar} className="cc-btn"
                         style={{ padding: "8px 12px", fontSize: 13, background: sel ? "var(--soil)" : "#fff", color: sel ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>
                         {sel ? <CheckCircle2 size={16} /> : <MapPin size={16} />} {l.nombre} ({fmt(l.hectareas, 1)} ha)
                       </button>
@@ -950,8 +992,8 @@ function StatCard({ label, value, icon: Icon, color }) {
     </div>
   );
 }
-function MiniStat({ label, value }) {
-  return <div><div style={{ fontSize: 10.5, color: "#8A8570", textTransform: "uppercase", letterSpacing: ".03em" }}>{label}</div><div className="cc-mono" style={{ fontSize: 15, fontWeight: 500 }}>{value}</div></div>;
+function MiniStat({ label, value, sub }) {
+  return <div><div style={{ fontSize: 10.5, color: "#8A8570", textTransform: "uppercase", letterSpacing: ".03em" }}>{label}</div><div className="cc-mono" style={{ fontSize: 15, fontWeight: 500 }}>{value}</div>{sub && <div style={{ fontSize: 10.5, color: "#8A8570" }}>{sub}</div>}</div>;
 }
 
 /* ------------------------------------------------------------------ */
@@ -959,7 +1001,7 @@ function MiniStat({ label, value }) {
 /* ------------------------------------------------------------------ */
 const emptyGasto = (email) => ({ origen: "", monto: "", detalle: "", fecha: "", usuario: email, categoriaGasto: "Servicio", socio: "" });
 
-function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, gastosTodos, superficie }) {
+function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, gastosTodos, superficie, puedeEditar = true }) {
   const [form, setForm] = useState(emptyGasto(user.email));
   const [editId, setEditId] = useState(null);
   const [tipo, setTipo] = useState("general"); // "general" | "insumo"
@@ -978,6 +1020,29 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
   const [busqueda, setBusqueda] = useState("");
   const [mensaje, setMensaje] = useState("");
   const avisar = (texto) => { setMensaje(texto); setTimeout(() => setMensaje(""), 2500); };
+  const [moneda, setMoneda] = useState("USD");
+  const [montoPesos, setMontoPesos] = useState("");
+  const [cotizacion, setCotizacion] = useState("");
+  const [cotizandoAuto, setCotizandoAuto] = useState(false);
+
+  // Buscar la cotización del dólar apenas se abre el formulario (API pública, gratuita, sin clave)
+  useEffect(() => {
+    let cancelado = false;
+    setCotizandoAuto(true);
+    fetch("https://open.er-api.com/v6/latest/USD")
+      .then((r) => r.json())
+      .then((d) => { if (!cancelado && d?.rates?.UYU) setCotizacion(String(Math.round(d.rates.UYU * 100) / 100)); })
+      .catch(() => {})
+      .finally(() => { if (!cancelado) setCotizandoAuto(false); });
+    return () => { cancelado = true; };
+  }, []);
+
+  // Mientras la moneda elegida sea Pesos, el monto en dólares se recalcula solo
+  useEffect(() => {
+    if (moneda === "UYU" && montoPesos && Number(cotizacion) > 0) {
+      setForm((f) => ({ ...f, monto: (Number(montoPesos) / Number(cotizacion)).toFixed(2) }));
+    }
+  }, [moneda, montoPesos, cotizacion]);
 
   const origenesSugeridos = Array.from(new Set(gastos.map((g) => g.origen).filter(Boolean)));
   const sociosSugeridos = Array.from(new Set(gastos.map((g) => g.socio).filter(Boolean)));
@@ -1015,7 +1080,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
   };
   const cancelarEdicion = () => {
     setEditId(null); setForm(emptyGasto(user.email)); setArchivos([]); setPreviews([]); setTranscripcion("");
-    setTipo("general"); setInsumoSel(""); setLitrosUsados("");
+    setTipo("general"); setInsumoSel(""); setLitrosUsados(""); setMoneda("USD"); setMontoPesos("");
   };
 
   const onFile = (e) => {
@@ -1070,7 +1135,8 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       if (!editId && Number(litrosUsados) > (insumoElegido?.disponible || 0)) {
         if (!confirm(`Solo hay ${fmt(insumoElegido?.disponible || 0, 1)} ${abrevUnidad(insumoElegido?.unidad)} disponibles de ${insumoSel}. ¿Registrar igual el consumo?`)) return;
       }
-    } else if (!form.origen || !form.monto || !form.fecha) { alert("Completá al menos origen, monto y fecha."); return; }
+    } else if (moneda === "UYU" && (!montoPesos || !cotizacion || Number(montoPesos) <= 0 || Number(cotizacion) <= 0)) { alert("Completá el monto en pesos y la cotización del dólar (tienen que ser mayores a 0)."); return; }
+    else if (!form.origen || !form.monto || !form.fecha) { alert("Completá al menos origen, monto y fecha."); return; }
     else if (Number(form.monto) <= 0) { alert("El monto tiene que ser un número mayor a 0."); return; }
 
     let facturaUrls, facturaNombres;
@@ -1098,6 +1164,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       };
     } else {
       datos = { origen: form.origen, monto: Number(form.monto), detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: null, litrosUsados: null, categoriaGasto: form.categoriaGasto || "Otro", socio: form.socio || "" };
+      if (moneda === "UYU") { datos.montoPesos = Number(montoPesos); datos.cotizacionUsada = Number(cotizacion); }
     }
     if (archivos.length) { datos.facturaUrls = facturaUrls; datos.facturaNombres = facturaNombres; }
 
@@ -1108,7 +1175,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     }
     const eraEdicion = !!editId;
     setEditId(null); setForm(emptyGasto(user.email)); setArchivos([]); setPreviews([]); setTranscripcion("");
-    setTipo("general"); setInsumoSel(""); setLitrosUsados("");
+    setTipo("general"); setInsumoSel(""); setLitrosUsados(""); setMoneda("USD"); setMontoPesos("");
     avisar(eraEdicion ? "Cambios guardados ✓" : "Gasto guardado ✓");
   };
 
@@ -1122,6 +1189,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
         {!superficie && <span style={{ color: "#8A8570" }}>— asociá lotes en la pestaña "Lotes" para calcular costo/ha.</span>}
       </div>
 
+      {puedeEditar && (
       <div className="cc-card p-4 space-y-4">
         <div className="flex flex-wrap gap-2">
           <label className="cc-btn cc-btn-ghost" style={{ cursor: "pointer" }}><Paperclip size={17} /> {archivos.length ? `${archivos.length} factura(s) elegida(s)` : "Adjuntar factura(s) (imagen o PDF)"}<input type="file" accept="image/*,.pdf" multiple onChange={onFile} style={{ display: "none" }} /></label>
@@ -1194,7 +1262,25 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
               <input className="cc-input" list="origenes-gastos" value={form.origen} onChange={(e) => set("origen", e.target.value)} placeholder="Proveedor, gasoil, renta..." />
               <datalist id="origenes-gastos">{origenesSugeridos.map((o) => <option key={o} value={o} />)}</datalist>
             </div>
-            <div><label style={{ fontSize: 12, color: "#8A8570" }}>Monto (U$S)</label><input className="cc-input" type="number" value={form.monto} onChange={(e) => set("monto", e.target.value)} /></div>
+            <div>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Moneda</label>
+              <div className="flex gap-1">
+                <button type="button" onClick={() => setMoneda("USD")} className="cc-btn" style={{ padding: "8px 12px", fontSize: 12.5, background: moneda === "USD" ? "var(--soil)" : "#fff", color: moneda === "USD" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Dólares</button>
+                <button type="button" onClick={() => setMoneda("UYU")} className="cc-btn" style={{ padding: "8px 12px", fontSize: 12.5, background: moneda === "UYU" ? "var(--gold)" : "#fff", color: moneda === "UYU" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Pesos</button>
+              </div>
+            </div>
+            {moneda === "USD" ? (
+              <div><label style={{ fontSize: 12, color: "#8A8570" }}>Monto (U$S)</label><input className="cc-input" type="number" value={form.monto} onChange={(e) => set("monto", e.target.value)} /></div>
+            ) : (
+              <>
+                <div><label style={{ fontSize: 12, color: "#8A8570" }}>Monto ($ pesos)</label><input className="cc-input" type="number" value={montoPesos} onChange={(e) => setMontoPesos(e.target.value)} /></div>
+                <div>
+                  <label style={{ fontSize: 12, color: "#8A8570" }}>Cotización del dólar {cotizandoAuto && "(buscando...)"}</label>
+                  <input className="cc-input" type="number" value={cotizacion} onChange={(e) => setCotizacion(e.target.value)} />
+                </div>
+                <div style={{ fontSize: 12.5, color: "#8A8570", display: "flex", alignItems: "end", paddingBottom: 6 }}>Equivale a: <b style={{ color: "var(--ink)", marginLeft: 4 }}>{fmtUSD(Number(form.monto) || 0)}</b></div>
+              </>
+            )}
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Usuario</label><input className="cc-input" value={form.usuario} disabled /></div>
             <div>
@@ -1214,6 +1300,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
           {mensaje && <span style={{ color: "var(--soil-light)", fontWeight: 700, fontSize: 13.5 }}>{mensaje}</span>}
         </div>
       </div>
+      )}
 
       {gastos.length > 0 && (
         <div className="flex items-center gap-3 flex-wrap">
@@ -1255,7 +1342,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                     {g.usuario}
                     {g.modificadoPor && g.modificadoPor !== g.usuario && <div style={{ fontStyle: "italic", fontSize: 10.5 }}>editado por {g.modificadoPor}</div>}
                   </td>
-                  <td className="px-3 py-2 text-right cc-mono">{fmtUSD(g.monto)}</td>
+                  <td className="px-3 py-2 text-right cc-mono">{fmtUSD(g.monto)}{g.montoPesos ? <div style={{ fontSize: 10.5, color: "#8A8570", fontWeight: 400 }}>$ {fmt(g.montoPesos, 0)} @ {fmt(g.cotizacionUsada, 2)}</div> : null}</td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1">
                       {(g.facturaUrls && g.facturaUrls.length ? g.facturaUrls : g.facturaUrl ? [g.facturaUrl] : []).map((u, i) => (
@@ -1264,8 +1351,8 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                     </div>
                   </td>
                   <td className="px-3 py-2 text-right"><button onClick={() => duplicar(g)} title="Duplicar"><Copy size={16} color="#8A8570" /></button></td>
-                  <td className="px-3 py-2 text-right"><button onClick={() => editar(g)} title="Editar"><Pencil size={16} color="var(--frost)" /></button></td>
-                  <td className="px-3 py-2 text-right"><button onClick={() => eliminar(g.id)} title="Eliminar"><Trash2 size={16} color="var(--rust)" /></button></td>
+                  <td className="px-3 py-2 text-right">{puedeEditar && <button onClick={() => editar(g)} title="Editar"><Pencil size={16} color="var(--frost)" /></button>}</td>
+                  <td className="px-3 py-2 text-right">{puedeEditar && <button onClick={() => eliminar(g.id)} title="Eliminar"><Trash2 size={16} color="var(--rust)" /></button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -1280,7 +1367,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
 /* ------------------------------------------------------------------ */
 /*  Ingresos · Ventas                                                    */
 /* ------------------------------------------------------------------ */
-function VentasTab({ cultivo, ventas, api }) {
+function VentasTab({ cultivo, ventas, api, puedeEditar = true }) {
   const [form, setForm] = useState({ fecha: "", origen: "", toneladas: "", dolaresPorTonelada: "" });
   const set = (k, v) => setForm({ ...form, [k]: v });
   const [mensaje, setMensaje] = useState("");
@@ -1299,6 +1386,7 @@ function VentasTab({ cultivo, ventas, api }) {
 
   return (
     <div className="space-y-5">
+      {puedeEditar && (
       <div className="cc-card p-4 space-y-3">
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))" }}>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
@@ -1315,6 +1403,7 @@ function VentasTab({ cultivo, ventas, api }) {
           {mensaje && <span style={{ color: "var(--soil-light)", fontWeight: 700, fontSize: 13.5 }}>{mensaje}</span>}
         </div>
       </div>
+      )}
 
       {ventas.length > 0 && (
         <div className="flex justify-end">
@@ -1335,7 +1424,7 @@ function VentasTab({ cultivo, ventas, api }) {
                   <td className="px-3 py-2 text-right cc-mono">{fmt(v.toneladas, 2)}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmtUSD(v.dolaresPorTonelada)}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmtUSD(v.toneladas * v.dolaresPorTonelada)}</td>
-                  <td className="px-3 py-2 text-right"><button onClick={() => eliminar(v.id)}><Trash2 size={16} color="var(--rust)" /></button></td>
+                  <td className="px-3 py-2 text-right">{puedeEditar && <button onClick={() => eliminar(v.id)}><Trash2 size={16} color="var(--rust)" /></button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -1350,7 +1439,7 @@ function VentasTab({ cultivo, ventas, api }) {
 /* ------------------------------------------------------------------ */
 /*  Ingresos · Remitos                                                   */
 /* ------------------------------------------------------------------ */
-function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
+function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas, puedeEditar = true }) {
   const [form, setForm] = useState({ fecha: "", remito: "", campo: "", destino: "", kgTolva: "", kgBrutos: "", kgSL: "", humedad: "" });
   const set = (k, v) => setForm({ ...form, [k]: v });
   const [mensaje, setMensaje] = useState("");
@@ -1371,6 +1460,7 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
 
   return (
     <div className="space-y-5">
+      {puedeEditar && (
       <div className="cc-card p-4 space-y-3">
         <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(130px,1fr))" }}>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
@@ -1391,6 +1481,7 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
           {mensaje && <span style={{ color: "var(--soil-light)", fontWeight: 700, fontSize: 13.5 }}>{mensaje}</span>}
         </div>
       </div>
+      )}
 
       {remitos.length > 0 && (
         <div className="flex justify-end">
@@ -1410,7 +1501,7 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
                   <td className="px-3 py-2 cc-mono">{r.fecha}</td><td className="px-3 py-2">{r.remito}</td><td className="px-3 py-2">{r.campo}</td><td className="px-3 py-2">{r.destino}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmt(r.kgTolva)}</td><td className="px-3 py-2 text-right cc-mono">{fmt(r.kgBrutos)}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmt(r.kgSL)}</td><td className="px-3 py-2 text-right cc-mono">{fmt(r.humedad, 1)}</td>
-                  <td className="px-3 py-2 text-right"><button onClick={() => eliminar(r.id)}><Trash2 size={16} color="var(--rust)" /></button></td>
+                  <td className="px-3 py-2 text-right">{puedeEditar && <button onClick={() => eliminar(r.id)}><Trash2 size={16} color="var(--rust)" /></button>}</td>
                 </tr>
               ))}
             </tbody>
@@ -1428,9 +1519,90 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas }) {
 /* ------------------------------------------------------------------ */
 /*  Lotes (referencia global)                                           */
 /* ------------------------------------------------------------------ */
-function CamposView({ campos, api, lotesApi, lotes, onOpen }) {
+/* ------------------------------------------------------------------ */
+/*  Usuarios y roles (solo admins)                                       */
+/* ------------------------------------------------------------------ */
+function UsuariosView({ usuarios, miEmail }) {
+  const [email, setEmail] = useState("");
+  const [rol, setRol] = useState("lectura");
+
+  const agregar = async () => {
+    const e = email.trim().toLowerCase();
+    if (!e || !e.includes("@")) { alert("Ingresá un email válido."); return; }
+    if (e === miEmail.toLowerCase()) { alert("No podés cambiarte el rol a vos mismo desde acá (para evitar quedarte afuera por error)."); return; }
+    await setDoc(doc(db, "usuarios", e), { email: e, rol });
+    setEmail("");
+  };
+
+  const cambiarRol = async (id, nuevoRol) => {
+    if (id === miEmail.toLowerCase()) { alert("No podés cambiarte el rol a vos mismo desde acá."); return; }
+    await setDoc(doc(db, "usuarios", id), { email: id, rol: nuevoRol });
+  };
+
+  const quitar = async (id) => {
+    if (id === miEmail.toLowerCase()) { alert("No podés quitarte a vos mismo de la lista."); return; }
+    if (confirm("Este usuario va a quedar como editor normal (rol por defecto). ¿Continuar?")) await deleteDoc(doc(db, "usuarios", id));
+  };
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <div className="cc-h" style={{ fontSize: 20, fontWeight: 600 }}>Usuarios</div>
+        <div style={{ fontSize: 12.5, color: "#8A8570" }}>Administrá quién puede editar datos y quién solo puede verlos. Si un email no aparece en esta lista, tiene acceso completo de edición por defecto.</div>
+      </div>
+
+      <div className="cc-card p-4">
+        <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Asignar rol a un usuario</div>
+        <div className="flex gap-3 flex-wrap items-end">
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Email del usuario</label>
+            <input className="cc-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="persona@ejemplo.com" />
+          </div>
+          <div style={{ width: 170 }}>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Rol</label>
+            <select className="cc-input" value={rol} onChange={(e) => setRol(e.target.value)}>
+              <option value="lectura">Solo lectura</option>
+              <option value="admin">Editor / Admin</option>
+            </select>
+          </div>
+          <button className="cc-btn cc-btn-primary" onClick={agregar}><Plus size={18} /> Guardar</button>
+        </div>
+        <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 8 }}>La persona tiene que crear su cuenta con este mismo email desde la pantalla de ingreso. El rol se aplica apenas inicia sesión.</div>
+      </div>
+
+      {usuarios.length === 0 ? (
+        <EmptyState icon={Users} title="Todos tienen acceso completo" text="Todavía no le asignaste rol de solo lectura a nadie." />
+      ) : (
+        <div className="cc-card overflow-hidden">
+          <table className="w-full" style={{ fontSize: 13 }}>
+            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Email</th><th className="px-3 py-2">Rol</th><th className="px-3 py-2"></th></tr></thead>
+            <tbody>
+              {usuarios.map((u) => (
+                <tr key={u.id} style={{ borderTop: "1px solid var(--line)" }}>
+                  <td className="px-3 py-2">{u.id}{u.id === miEmail.toLowerCase() && <span className="cc-chip" style={{ marginLeft: 6, background: "#EEEADA" }}>vos</span>}</td>
+                  <td className="px-3 py-2">
+                    <select className="cc-input" style={{ padding: "5px 8px", fontSize: 12.5, width: 160 }} value={u.rol} disabled={u.id === miEmail.toLowerCase()} onChange={(e) => cambiarRol(u.id, e.target.value)}>
+                      <option value="lectura">Solo lectura</option>
+                      <option value="admin">Editor / Admin</option>
+                    </select>
+                  </td>
+                  <td className="px-3 py-2 text-right">{u.id !== miEmail.toLowerCase() && <button onClick={() => quitar(u.id)}><Trash2 size={16} color="var(--rust)" /></button>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+/* ------------------------------------------------------------------ */
+/*  Campos (establecimientos)                                           */
+/* ------------------------------------------------------------------ */
+function CamposView({ campos, api, lotesApi, lotes, onOpen, puedeEditar = true }) {
   const [nombre, setNombre] = useState("");
-  const lotesSinCampo = lotes.filter((l) => !l.campoId);
 
   const crear = () => { if (!nombre.trim()) return; api.add({ nombre: nombre.trim() }); setNombre(""); };
   const eliminar = (id) => {
@@ -1441,16 +1613,18 @@ function CamposView({ campos, api, lotesApi, lotes, onOpen }) {
 
   return (
     <div className="space-y-5">
-      <div className="cc-card p-4">
-        <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Nuevo campo</div>
-        <div className="flex gap-3 flex-wrap items-end">
-          <div style={{ flex: 1, minWidth: 180 }}>
-            <label style={{ fontSize: 12, color: "#8A8570" }}>Nombre</label>
-            <input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Establecimiento La Loma" />
+      {puedeEditar && (
+        <div className="cc-card p-4">
+          <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Nuevo campo</div>
+          <div className="flex gap-3 flex-wrap items-end">
+            <div style={{ flex: 1, minWidth: 180 }}>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Nombre</label>
+              <input className="cc-input" value={nombre} onChange={(e) => setNombre(e.target.value)} placeholder="Ej: Establecimiento La Loma" />
+            </div>
+            <button className="cc-btn cc-btn-primary" onClick={crear}><Plus size={18} /> Agregar</button>
           </div>
-          <button className="cc-btn cc-btn-primary" onClick={crear}><Plus size={18} /> Agregar</button>
         </div>
-      </div>
+      )}
 
       {campos.length === 0 && lotesSinCampo.length === 0 ? (
         <EmptyState icon={MapPin} title="Todavía no hay campos cargados" text="Creá un campo (establecimiento) para después agruparle sus lotes." />
@@ -1477,7 +1651,7 @@ function CamposView({ campos, api, lotesApi, lotes, onOpen }) {
                     <div className="cc-h" style={{ fontSize: 17, fontWeight: 600 }}>{c.nombre}</div>
                     <div style={{ fontSize: 12, color: "#8A8570" }}>{nLotes} lote{nLotes !== 1 ? "s" : ""}{hasTotal ? ` · ${fmt(hasTotal, 1)} ha` : ""}</div>
                   </div>
-                  <button onClick={(e) => { e.stopPropagation(); eliminar(c.id); }}><Trash2 size={16} color="var(--rust)" /></button>
+                  {puedeEditar && <button onClick={(e) => { e.stopPropagation(); eliminar(c.id); }}><Trash2 size={16} color="var(--rust)" /></button>}
                 </div>
                 <div className="flex items-center gap-1 mt-3" style={{ color: "var(--frost)", fontSize: 12.5, fontWeight: 600 }}>Ver lotes <ChevronRight size={16} /></div>
               </div>
@@ -1492,7 +1666,7 @@ function CamposView({ campos, api, lotesApi, lotes, onOpen }) {
 /* ------------------------------------------------------------------ */
 /*  Lotes de un campo                                                    */
 /* ------------------------------------------------------------------ */
-function LotesView({ campo, lotes, api, sinCampo, campos = [] }) {
+function LotesView({ campo, lotes, api, sinCampo, campos = [], puedeEditar = true }) {
   const [nombre, setNombre] = useState("");
   const [hectareas, setHectareas] = useState("");
   const guardar = () => {
@@ -1509,7 +1683,7 @@ function LotesView({ campo, lotes, api, sinCampo, campos = [] }) {
         <div className="cc-card p-4" style={{ background: "#FDF3E0", border: "1px solid var(--gold)" }}>
           <div style={{ fontSize: 13, color: "#7A5A1E" }}>Estos lotes son de antes de tener "Campos" y no pertenecen a ninguno. Asignalos a un campo desde el selector de cada fila, o borralos si ya no los usás.</div>
         </div>
-      ) : (
+      ) : puedeEditar ? (
         <div className="cc-card p-4">
           <div className="cc-h" style={{ fontSize: 16, fontWeight: 600, marginBottom: 10 }}>Nuevo lote en {campo.nombre}</div>
           <div className="flex gap-3 flex-wrap items-end">
@@ -1518,16 +1692,16 @@ function LotesView({ campo, lotes, api, sinCampo, campos = [] }) {
             <button className="cc-btn cc-btn-primary" onClick={guardar}><Plus size={18} /> Agregar</button>
           </div>
         </div>
-      )}
+      ) : null}
       {lotes.length === 0 ? <EmptyState icon={MapPin} title="No hay lotes cargados en este campo" text="Los lotes son de referencia: van a aparecer como sugerencia al cargar el 'Campo' de cada remito." /> : (
         <div className="cc-card overflow-hidden">
           <table className="w-full" style={{ fontSize: 13 }}>
-            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-4 py-2">Lote</th><th className="px-4 py-2">Hectáreas</th>{sinCampo && <th className="px-4 py-2">Asignar a campo</th>}<th className="px-4 py-2"></th></tr></thead>
+            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-4 py-2">Lote</th><th className="px-4 py-2">Hectáreas</th>{sinCampo && puedeEditar && <th className="px-4 py-2">Asignar a campo</th>}<th className="px-4 py-2"></th></tr></thead>
             <tbody>{lotes.map((l) => (
               <tr key={l.id} style={{ borderTop: "1px solid var(--line)" }}>
                 <td className="px-4 py-2">{l.nombre}</td>
                 <td className="px-4 py-2 cc-mono">{l.hectareas ? `${fmt(l.hectareas, 1)} ha` : "-"}</td>
-                {sinCampo && (
+                {sinCampo && puedeEditar && (
                   <td className="px-4 py-2">
                     <select className="cc-input" style={{ padding: "5px 8px", fontSize: 12.5 }} defaultValue="" onChange={(e) => mover(l.id, e.target.value)}>
                       <option value="" disabled>Elegir campo…</option>
@@ -1535,7 +1709,7 @@ function LotesView({ campo, lotes, api, sinCampo, campos = [] }) {
                     </select>
                   </td>
                 )}
-                <td className="px-4 py-2 text-right"><button onClick={() => eliminar(l.id)}><Trash2 size={17} color="var(--rust)" /></button></td>
+                <td className="px-4 py-2 text-right">{puedeEditar && <button onClick={() => eliminar(l.id)}><Trash2 size={17} color="var(--rust)" /></button>}</td>
               </tr>
             ))}</tbody>
           </table>
@@ -1550,7 +1724,7 @@ function LotesView({ campo, lotes, api, sinCampo, campos = [] }) {
 /* ------------------------------------------------------------------ */
 const emptyItemInsumo = () => ({ nombre: "", litros: "", unidad: "Litros", precioUnitario: "" });
 
-function InsumosView({ compras, api, stockInsumos, user }) {
+function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true }) {
   const [fecha, setFecha] = useState("");
   const [origen, setOrigen] = useState("");
   const [socio, setSocio] = useState("");
@@ -1638,7 +1812,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
         <div style={{ fontSize: 12.5, color: "#8A8570" }}>Registrá las compras de insumos. El stock se descuenta solo cuando lo consumís desde "Gastos" en cada cultivo.</div>
       </div>
 
-      <div className="cc-card p-4 space-y-4">
+      <div className="cc-card p-4 space-y-4" style={{ display: puedeEditar ? undefined : "none" }}>
         <div className="flex flex-wrap gap-2">
           <label className="cc-btn cc-btn-ghost" style={{ cursor: "pointer" }}>
             <Paperclip size={17} /> {archivo ? archivo.name : "Adjuntar factura (imagen o PDF)"}
@@ -1765,7 +1939,7 @@ function InsumosView({ compras, api, stockInsumos, user }) {
                     <td className="px-3 py-2 text-right cc-mono">{fmt(c.litros, 1)} {abrevUnidad(c.unidad)}</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmtUSD(c.precio)}</td>
                     <td className="px-3 py-2">{c.facturaUrl && <a href={c.facturaUrl} target="_blank" rel="noreferrer"><FileText size={17} color="var(--frost)" /></a>}</td>
-                    <td className="px-3 py-2 text-right"><button onClick={() => eliminar(c.id)}><Trash2 size={16} color="var(--rust)" /></button></td>
+                    <td className="px-3 py-2 text-right">{puedeEditar && <button onClick={() => eliminar(c.id)}><Trash2 size={16} color="var(--rust)" /></button>}</td>
                   </tr>
                 ))}
               </tbody>
@@ -1812,18 +1986,20 @@ function InsumosView({ compras, api, stockInsumos, user }) {
 /* ------------------------------------------------------------------ */
 /*  Resumen general (todas las campañas y cultivos)                     */
 /* ------------------------------------------------------------------ */
-function ResumenGeneralView({ campanias, cultivos, gastos, ventas, lotes, insumosCompras, onOpenCultivo }) {
+function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lotes, insumosCompras, onOpenCultivo }) {
   const filas = cultivos.map((c) => {
     const campania = campanias.find((cp) => cp.id === c.campaniaId);
     const gastosCultivo = gastos.filter((g) => g.cultivoId === c.id);
     const ventasCultivo = ventas.filter((v) => v.cultivoId === c.id);
+    const remitosCultivo = remitos.filter((r) => r.cultivoId === c.id);
     const totalGastos = gastosCultivo.reduce((s, g) => s + Number(g.monto || 0), 0);
     const totalIngresos = ventasCultivo.reduce((s, v) => s + Number(v.toneladas || 0) * Number(v.dolaresPorTonelada || 0), 0);
+    const totalTon = remitosCultivo.reduce((s, r) => s + Number(r.kgSL || 0), 0) / 1000;
     const superficie = lotes.filter((l) => (c.loteIds || []).includes(l.id)).reduce((s, l) => s + Number(l.hectareas || 0), 0);
     return {
       cultivoId: c.id, campaniaId: c.campaniaId, cultivoNombre: c.nombre, tipoCultivo: c.tipo || c.nombre, categoria: c.categoria,
       campaniaNombre: campania ? (campania.nombre || campania.anio) : "—", anio: campania?.anio || 0,
-      superficie, totalGastos, totalIngresos, margen: totalIngresos - totalGastos,
+      superficie, totalGastos, totalIngresos, margen: totalIngresos - totalGastos, rendimiento: superficie && totalTon ? totalTon / superficie : null,
       costoPorHa: superficie ? totalGastos / superficie : null, margenPorHa: superficie ? (totalIngresos - totalGastos) / superficie : null,
     };
   }).sort((a, b) => b.anio - a.anio || a.cultivoNombre.localeCompare(b.cultivoNombre));
@@ -1853,7 +2029,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, lotes, insumo
   const totalAportes = Object.values(aportesSocio).reduce((s, v) => s + v, 0);
 
   const exportar = () => exportarExcel("resumen_general_campo_costo", [
-    { nombre: "Resumen", filas: filas.map((f) => ({ Campaña: f.campaniaNombre, Cultivo: f.cultivoNombre, Categoría: f.categoria, "Superficie (ha)": f.superficie, "Total gastos": f.totalGastos, "Total ingresos": f.totalIngresos, Margen: f.margen, "Gasto/ha": f.costoPorHa, "Margen/ha": f.margenPorHa })) },
+    { nombre: "Resumen", filas: filas.map((f) => ({ Campaña: f.campaniaNombre, Cultivo: f.cultivoNombre, Categoría: f.categoria, "Superficie (ha)": f.superficie, "Rinde (tn/ha)": f.rendimiento, "Total gastos": f.totalGastos, "Total ingresos": f.totalIngresos, Margen: f.margen, "Gasto/ha": f.costoPorHa, "Margen/ha": f.margenPorHa })) },
     { nombre: "Aporte por socio", filas: Object.entries(aportesSocio).map(([socio, monto]) => ({ Socio: socio, Monto: monto, "% del total": totalAportes ? (monto / totalAportes) * 100 : 0 })) },
   ]);
 
@@ -1877,10 +2053,58 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, lotes, insumo
         <StatCard label="Margen (todo)" value={fmtUSD(margenGeneral)} icon={margenGeneral >= 0 ? TrendingUp : TrendingDown} color={margenGeneral >= 0 ? "var(--soil-light)" : "var(--rust)"} />
       </div>
 
+      <div className="grid gap-4" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(320px,1fr))" }}>
+        <div className="cc-card p-4">
+          <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Gastos vs. ingresos por cultivo</div>
+          <div style={{ width: "100%", overflowX: filas.length > 8 ? "auto" : "visible" }}>
+            <div style={{ minWidth: filas.length > 8 ? filas.length * 70 : "100%", height: 260 }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={filas.map((f) => ({ nombre: `${f.cultivoNombre} · ${f.campaniaNombre}`, Gastos: Math.round(f.totalGastos), Ingresos: Math.round(f.totalIngresos) }))} margin={{ top: 4, right: 8, left: 0, bottom: 40 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--line)" />
+                  <XAxis dataKey="nombre" angle={-35} textAnchor="end" interval={0} height={70} tick={{ fontSize: 10.5, fill: "#8A8570" }} />
+                  <YAxis tick={{ fontSize: 10.5, fill: "#8A8570" }} />
+                  <Tooltip formatter={(v) => fmtUSD(v)} contentStyle={{ fontSize: 12.5, borderRadius: 8 }} />
+                  <Legend wrapperStyle={{ fontSize: 12 }} />
+                  <Bar dataKey="Gastos" fill="#8C3D3D" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="Ingresos" fill="#3E4F32" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        <div className="cc-card p-4">
+          <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Gastos por categoría</div>
+          {(() => {
+            const porCategoria = {};
+            gastosActivos.forEach((g) => {
+              const cat = g.categoriaGasto || (g.insumoNombre ? "Insumo" : "Otro");
+              porCategoria[cat] = (porCategoria[cat] || 0) + Number(g.monto || 0);
+            });
+            const dataCat = Object.entries(porCategoria).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+            const colores = ["#8C3D3D", "#C68A2E", "#3D6E8C", "#5C7A4E", "#5B4B8A", "#8A6D3B", "#7A7267"];
+            if (!dataCat.length) return <div style={{ fontSize: 13, color: "#8A8570" }}>Todavía no hay gastos cargados.</div>;
+            return (
+              <div style={{ height: 260 }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie data={dataCat} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={85} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`} labelLine={false} style={{ fontSize: 11 }}>
+                      {dataCat.map((_, i) => <Cell key={i} fill={colores[i % colores.length]} />)}
+                    </Pie>
+                    <Tooltip formatter={(v) => fmtUSD(v)} contentStyle={{ fontSize: 12.5, borderRadius: 8 }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+
       <div className="cc-card overflow-hidden">
         <table className="w-full" style={{ fontSize: 13 }}>
           <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}>
             <th className="px-3 py-2">Campaña</th><th className="px-3 py-2">Cultivo</th><th className="px-3 py-2 text-right">Ha</th>
+            <th className="px-3 py-2 text-right">Rinde tn/ha</th>
             <th className="px-3 py-2 text-right">Gastos</th><th className="px-3 py-2 text-right">Ingresos</th><th className="px-3 py-2 text-right">Margen</th>
           </tr></thead>
           <tbody>
@@ -1892,6 +2116,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, lotes, insumo
                   {f.cultivoNombre}
                 </td>
                 <td className="px-3 py-2 text-right cc-mono">{f.superficie ? fmt(f.superficie, 1) : "-"}</td>
+                <td className="px-3 py-2 text-right cc-mono">{f.rendimiento !== null ? fmt(f.rendimiento, 2) : "-"}</td>
                 <td className="px-3 py-2 text-right cc-mono">{fmtUSD(f.totalGastos)}</td>
                 <td className="px-3 py-2 text-right cc-mono">{fmtUSD(f.totalIngresos)}</td>
                 <td className="px-3 py-2 text-right cc-mono" style={{ color: f.margen >= 0 ? "var(--soil-light)" : "var(--rust)", fontWeight: 700 }}>{fmtUSD(f.margen)}</td>
@@ -1899,7 +2124,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, lotes, insumo
             ))}
           </tbody>
           <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}>
-            <td className="px-3 py-2" colSpan={3}>Total</td>
+            <td className="px-3 py-2" colSpan={4}>Total</td>
             <td className="px-3 py-2 text-right cc-mono">{fmtUSD(totalGastosGeneral)}</td>
             <td className="px-3 py-2 text-right cc-mono">{fmtUSD(totalIngresosGeneral)}</td>
             <td className="px-3 py-2 text-right cc-mono">{fmtUSD(margenGeneral)}</td>
@@ -1917,7 +2142,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, lotes, insumo
                 <div className="px-3 py-2" style={{ background: "#EEEADA", fontWeight: 600, fontSize: 13.5 }}>{nombre}</div>
                 <table className="w-full" style={{ fontSize: 13 }}>
                   <thead><tr style={{ textAlign: "left", color: "#8A8570" }}>
-                    <th className="px-3 py-2">Campaña</th><th className="px-3 py-2 text-right">Ha</th>
+                    <th className="px-3 py-2">Campaña</th><th className="px-3 py-2 text-right">Ha</th><th className="px-3 py-2 text-right">Rinde tn/ha</th>
                     <th className="px-3 py-2 text-right">Gasto/ha</th><th className="px-3 py-2 text-right">Margen/ha</th><th className="px-3 py-2 text-right">Margen total</th>
                   </tr></thead>
                   <tbody>
@@ -1925,6 +2150,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, lotes, insumo
                       <tr key={f.cultivoId} style={{ borderTop: "1px solid var(--line)", cursor: "pointer" }} onClick={() => onOpenCultivo(f.cultivoId, f.campaniaId)}>
                         <td className="px-3 py-2">{f.campaniaNombre}</td>
                         <td className="px-3 py-2 text-right cc-mono">{f.superficie ? fmt(f.superficie, 1) : "-"}</td>
+                        <td className="px-3 py-2 text-right cc-mono">{f.rendimiento !== null ? fmt(f.rendimiento, 2) : "-"}</td>
                         <td className="px-3 py-2 text-right cc-mono">{f.costoPorHa !== null ? fmtUSD(f.costoPorHa) : "-"}</td>
                         <td className="px-3 py-2 text-right cc-mono" style={{ color: f.margenPorHa >= 0 ? "var(--soil-light)" : "var(--rust)" }}>{f.margenPorHa !== null ? fmtUSD(f.margenPorHa) : "-"}</td>
                         <td className="px-3 py-2 text-right cc-mono" style={{ fontWeight: 700, color: f.margen >= 0 ? "var(--soil-light)" : "var(--rust)" }}>{fmtUSD(f.margen)}</td>
@@ -1967,7 +2193,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, lotes, insumo
 /* ------------------------------------------------------------------ */
 /*  Papelera                                                            */
 /* ------------------------------------------------------------------ */
-function PapeleraView({ grupos }) {
+function PapeleraView({ grupos, puedeEditar = true }) {
   const hayAlgo = grupos.some((g) => g.items.length > 0);
   if (!hayAlgo) {
     return <EmptyState icon={Trash} title="La papelera está vacía" text="Todo lo que borres desde cualquier parte de la app va a aparecer acá antes de eliminarse para siempre." />;
@@ -1991,13 +2217,15 @@ function PapeleraView({ grupos }) {
                     <td className="px-3 py-2" style={{ color: "#8A8570", fontSize: 12 }}>{it.eliminadoPor || "-"}</td>
                     <td className="px-3 py-2 cc-mono" style={{ fontSize: 12 }}>{it.eliminadoEn ? new Date(it.eliminadoEn).toLocaleString("es-UY") : "-"}</td>
                     <td className="px-3 py-2 text-right">
-                      <div className="flex gap-2 justify-end">
-                        <button className="cc-btn cc-btn-ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => g.api.restaurar(it.id)}><RotateCcw size={15} /> Restaurar</button>
-                        <button className="cc-btn" style={{ padding: "5px 10px", fontSize: 12, background: "var(--rust)", color: "#fff" }}
-                          onClick={() => { if (confirm("Esto lo borra para siempre, sin poder recuperarlo. ¿Continuar?")) g.api.eliminarDefinitivo(it.id); }}>
-                          <Trash2 size={15} /> Eliminar para siempre
-                        </button>
-                      </div>
+                      {puedeEditar ? (
+                        <div className="flex gap-2 justify-end">
+                          <button className="cc-btn cc-btn-ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => g.api.restaurar(it.id)}><RotateCcw size={15} /> Restaurar</button>
+                          <button className="cc-btn" style={{ padding: "5px 10px", fontSize: 12, background: "var(--rust)", color: "#fff" }}
+                            onClick={() => { if (confirm("Esto lo borra para siempre, sin poder recuperarlo. ¿Continuar?")) g.api.eliminarDefinitivo(it.id); }}>
+                            <Trash2 size={15} /> Eliminar para siempre
+                          </button>
+                        </div>
+                      ) : null}
                     </td>
                   </tr>
                 ))}
