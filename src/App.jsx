@@ -102,7 +102,6 @@ function fileToBase64(file) {
 }
 
 function exportarExcel(nombreArchivo, hojas) {
-  // hojas: [{ nombre: "Gastos", filas: [{...}, ...] }, ...]
   const wb = XLSX.utils.book_new();
   hojas.forEach((h) => {
     const ws = XLSX.utils.json_to_sheet(h.filas);
@@ -135,7 +134,6 @@ const GLOBAL_STYLES = `
   .cc-chip{font-size:11px; font-weight:600; padding:3px 9px; border-radius:99px; letter-spacing:.02em;}
   .cc-sub{display:flex; align-items:center; gap:6px; padding:8px 14px; font-size:13px; font-weight:600; border-radius:8px 8px 0 0; cursor:pointer;}
 
-  /* Utilidades básicas usadas en toda la app (el proyecto no tiene Tailwind instalado) */
   html, body { overflow-x: hidden; }
   .flex{display:flex;} .flex-col{flex-direction:column;} .flex-wrap{flex-wrap:wrap;}
   .items-center{align-items:center;} .items-start{align-items:flex-start;} .items-end{align-items:flex-end;}
@@ -153,18 +151,15 @@ const GLOBAL_STYLES = `
   .cursor-pointer{cursor:pointer;}
   .animate-spin{animation:cc-spin 1s linear infinite;} @keyframes cc-spin{to{transform:rotate(360deg);}}
 
-  /* Tablas: que scrolleen horizontalmente en vez de recortarse o desbordar la pantalla en el celular */
   .cc-card.overflow-hidden{overflow-x:auto; -webkit-overflow-scrolling:touch;}
   .cc-card.overflow-hidden table{min-width:520px;}
 
-  /* En el celular, los inputs necesitan al menos 16px de letra o Safari hace zoom solo al tocarlos */
   @media (max-width: 640px){
     .cc-input{font-size:16px;}
     .px-6{padding-left:14px;padding-right:14px;}
     .py-4{padding-top:12px;padding-bottom:12px;}
   }
 
-  /* Menú superior: en pantallas angostas se oculta y aparece el botón de hamburguesa */
   .cc-nav-desktop{display:flex;}
   .cc-nav-toggle{display:none;}
   @media (max-width: 760px){
@@ -264,28 +259,19 @@ export default function App() {
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); };
   }, [user]);
 
-  // Rol del usuario actual: si no hay un documento de rol para su email, se lo trata como editor
-  // (evita que alguien quede bloqueado por accidente al activar este sistema por primera vez)
   const miUsuario = usuariosRaw.find((u) => u.id === user?.email);
   const miRol = miUsuario?.rol || "admin";
   const puedeEditar = miRol !== "lectura";
   const esAdmin = miRol === "admin";
 
-  // Versiones "activas" (sin lo que está en la papelera), que usa el resto de la app
   const campanias = campaniasRaw.filter((x) => !x.eliminado);
   const campaniaIdsActivas = new Set(campanias.map((c) => c.id));
-  // Además de no estar eliminado, un cultivo solo cuenta como activo si su campaña también sigue activa
-  // (evita cultivos "huérfanos" en Resumen general cuando se borró la campaña sin borrar sus cultivos)
   const cultivos = cultivosRaw.filter((x) => !x.eliminado && campaniaIdsActivas.has(x.campaniaId));
   const cultivoIdsActivos = new Set(cultivos.map((c) => c.id));
   const campos = camposRaw.filter((x) => !x.eliminado);
   const campoIdsActivos = new Set(campos.map((c) => c.id));
-  // Un lote solo cuenta como activo si además el campo al que pertenece sigue activo (evita huérfanos igual que con cultivos/campañas)
   const lotes = lotesRaw.filter((x) => !x.eliminado && (!x.campoId || campoIdsActivos.has(x.campoId)));
   const insumosCompras = insumosComprasRaw.filter((x) => !x.eliminado);
-  // Gastos, ventas y remitos siempre pertenecen a un cultivo puntual: si ese cultivo ya no existe
-  // (se borró, en cascada o directo), tampoco deben contarse en ningún cálculo global
-  // (stock de insumos, aporte por socio, resumen general, etc.)
   const gastosTodos = gastosRaw.filter((x) => !x.eliminado && cultivoIdsActivos.has(x.cultivoId));
   const ventasTodas = ventasRaw.filter((x) => !x.eliminado && cultivoIdsActivos.has(x.cultivoId));
   const remitosTodos = remitosRaw.filter((x) => !x.eliminado && cultivoIdsActivos.has(x.cultivoId));
@@ -295,7 +281,6 @@ export default function App() {
   }
   if (!user) return <Login />;
 
-  // Helper genérico: en vez de borrar, marca como eliminado (papelera)
   const softDeleteApi = (coleccion) => ({
     add: (data) => addDoc(collection(db, coleccion), { ...data, creadoPor: user.email, creadoEn: new Date().toISOString() }),
     update: (id, data) => updateDoc(doc(db, coleccion, id), { ...data, modificadoPor: user.email, modificadoEn: new Date().toISOString() }),
@@ -313,7 +298,6 @@ export default function App() {
   const remitosApiGlobal = softDeleteApi("remitos");
   const gastosApiGlobal = softDeleteApi("gastos");
 
-  // Stock disponible por insumo = total comprado - total consumido en gastos de cultivos
   const stockInsumos = (() => {
     const mapa = {};
     insumosCompras.forEach((c) => {
@@ -321,7 +305,7 @@ export default function App() {
       if (!mapa[k]) mapa[k] = { nombre: k, litrosComprados: 0, costoComprado: 0, litrosConsumidos: 0, unidad: c.unidad || "Litros" };
       mapa[k].litrosComprados += Number(c.litros || 0);
       mapa[k].costoComprado += Number(c.precio || 0);
-      mapa[k].unidad = c.unidad || "Litros"; // se queda con la unidad de la última compra cargada
+      mapa[k].unidad = c.unidad || "Litros";
     });
     gastosTodos.forEach((g) => {
       if (g.insumoNombre && mapa[g.insumoNombre]) mapa[g.insumoNombre].litrosConsumidos += Number(g.litrosUsados || 0);
@@ -350,7 +334,6 @@ export default function App() {
             </div>
           </button>
 
-          {/* Menú de escritorio: se oculta en pantallas angostas (ver CSS .cc-nav-desktop) */}
           <div className="cc-nav-desktop items-center gap-3">
             <button onClick={() => setNav({ view: "resumen_general", campaniaId: null, cultivoId: null })} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}>
               <span style={{ display: "inline-flex", alignItems: "center", justifyContent: "center", width: 22, height: 22, borderRadius: "50%", background: "var(--frost)" }}><LayoutDashboard size={13} color="#fff" /></span> Resumen general
@@ -373,13 +356,11 @@ export default function App() {
             <button onClick={() => signOut(auth)} className="cc-btn" style={{ background: "transparent", border: "1px solid #4C5A40", color: "#D8DECB", padding: "6px 12px", fontSize: 12.5 }}><LogOut size={16} /> Salir</button>
           </div>
 
-          {/* Botón de hamburguesa: solo visible en pantallas angostas (ver CSS .cc-nav-toggle) */}
           <button className="cc-nav-toggle" onClick={() => setMenuMovilAbierto((v) => !v)} style={{ background: "transparent", border: "1px solid #4C5A40", color: "#fff", padding: "8px", borderRadius: 7 }}>
             {menuMovilAbierto ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
 
-        {/* Panel desplegable del menú móvil */}
         {menuMovilAbierto && (
           <div className="flex flex-col gap-2 mt-3" style={{ maxWidth: "72rem", margin: "12px auto 0" }}>
             {[
@@ -848,7 +829,6 @@ function CultivoLotesTab({ cultivo, lotes, lotesApi, cultivosApi, superficie, ca
     setNombre(""); setHectareas("");
   };
 
-  // Agrupar los lotes por campo, respetando el filtro elegido
   const lotesFiltrados = filtroCampo === "todos" ? lotes : filtroCampo === "__sin_campo__" ? lotes.filter((l) => !l.campoId) : lotes.filter((l) => l.campoId === filtroCampo);
   const gruposOrden = [...campos.map((c) => c.id), "__sin_campo__"];
   const nombreCampo = (id) => (id === "__sin_campo__" ? "Sin campo asignado" : (campos.find((c) => c.id === id)?.nombre || "Campo eliminado"));
@@ -1024,8 +1004,9 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
   const [montoPesos, setMontoPesos] = useState("");
   const [cotizacion, setCotizacion] = useState("");
   const [cotizandoAuto, setCotizandoAuto] = useState(false);
+  const [modoMonto, setModoMonto] = useState("total"); // "total" | "porHa"
+  const [valorPorHa, setValorPorHa] = useState("");
 
-  // Buscar la cotización del dólar apenas se abre el formulario (API pública, gratuita, sin clave)
   useEffect(() => {
     let cancelado = false;
     setCotizandoAuto(true);
@@ -1037,12 +1018,18 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     return () => { cancelado = true; };
   }, []);
 
-  // Mientras la moneda elegida sea Pesos, el monto en dólares se recalcula solo
   useEffect(() => {
     if (moneda === "UYU" && montoPesos && Number(cotizacion) > 0) {
       setForm((f) => ({ ...f, monto: (Number(montoPesos) / Number(cotizacion)).toFixed(2) }));
     }
   }, [moneda, montoPesos, cotizacion]);
+
+  // Cuando el modo es "Valor por hectárea", el monto total se recalcula solo (valor/ha × superficie del cultivo)
+  useEffect(() => {
+    if (modoMonto === "porHa" && valorPorHa && superficie) {
+      setForm((f) => ({ ...f, monto: (Number(valorPorHa) * superficie).toFixed(2) }));
+    }
+  }, [modoMonto, valorPorHa, superficie]);
 
   const origenesSugeridos = Array.from(new Set(gastos.map((g) => g.origen).filter(Boolean)));
   const sociosSugeridos = Array.from(new Set(gastos.map((g) => g.socio).filter(Boolean)));
@@ -1063,6 +1050,8 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       setTipo("general"); setInsumoSel(""); setLitrosUsados("");
       setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email, categoriaGasto: g.categoriaGasto || "Servicio", socio: g.socio || "" });
     }
+    if (g.modoMonto === "porHa" && g.valorPorHectarea) { setModoMonto("porHa"); setValorPorHa(String(g.valorPorHectarea)); }
+    else { setModoMonto("total"); setValorPorHa(""); }
     setArchivos([]); setPreviews([]); setTranscripcion(""); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1075,12 +1064,15 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       setTipo("general"); setInsumoSel(""); setLitrosUsados("");
       setForm({ origen: g.origen || "", monto: String(g.monto ?? ""), detalle: g.detalle || "", fecha: "", usuario: user.email, categoriaGasto: g.categoriaGasto || "Servicio", socio: g.socio || "" });
     }
+    if (g.modoMonto === "porHa" && g.valorPorHectarea) { setModoMonto("porHa"); setValorPorHa(String(g.valorPorHectarea)); }
+    else { setModoMonto("total"); setValorPorHa(""); }
     setArchivos([]); setPreviews([]); setTranscripcion(""); setError("");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
   const cancelarEdicion = () => {
     setEditId(null); setForm(emptyGasto(user.email)); setArchivos([]); setPreviews([]); setTranscripcion("");
     setTipo("general"); setInsumoSel(""); setLitrosUsados(""); setMoneda("USD"); setMontoPesos("");
+    setModoMonto("total"); setValorPorHa("");
   };
 
   const onFile = (e) => {
@@ -1135,6 +1127,10 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       if (!editId && Number(litrosUsados) > (insumoElegido?.disponible || 0)) {
         if (!confirm(`Solo hay ${fmt(insumoElegido?.disponible || 0, 1)} ${abrevUnidad(insumoElegido?.unidad)} disponibles de ${insumoSel}. ¿Registrar igual el consumo?`)) return;
       }
+    } else if (modoMonto === "porHa") {
+      if (!superficie) { alert("Este cultivo todavía no tiene hectáreas cargadas — andá a la pestaña \"Lotes\" para asociarle lotes, o cargá el gasto por monto total."); return; }
+      if (!valorPorHa || Number(valorPorHa) <= 0) { alert("Ingresá un valor por hectárea mayor a 0."); return; }
+      if (!form.origen || !form.fecha) { alert("Completá al menos origen y fecha."); return; }
     } else if (moneda === "UYU" && (!montoPesos || !cotizacion || Number(montoPesos) <= 0 || Number(cotizacion) <= 0)) { alert("Completá el monto en pesos y la cotización del dólar (tienen que ser mayores a 0)."); return; }
     else if (!form.origen || !form.monto || !form.fecha) { alert("Completá al menos origen, monto y fecha."); return; }
     else if (Number(form.monto) <= 0) { alert("El monto tiene que ser un número mayor a 0."); return; }
@@ -1160,11 +1156,18 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       datos = {
         origen: form.origen || insumoSel, monto: montoCalculado, detalle: form.detalle || `Consumo de ${insumoSel} — ${litrosUsados} L`,
         fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: insumoSel, litrosUsados: Number(litrosUsados), costoPorLitro: fifo.costoPromedioEfectivo,
-        categoriaGasto: "Insumo", socio: form.socio || "",
+        categoriaGasto: "Insumo", socio: form.socio || "", modoMonto: null, valorPorHectarea: null,
       };
     } else {
-      datos = { origen: form.origen, monto: Number(form.monto), detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: null, litrosUsados: null, categoriaGasto: form.categoriaGasto || "Otro", socio: form.socio || "" };
-      if (moneda === "UYU") { datos.montoPesos = Number(montoPesos); datos.cotizacionUsada = Number(cotizacion); }
+      const montoFinal = modoMonto === "porHa" ? Number(valorPorHa) * superficie : Number(form.monto);
+      datos = {
+        origen: form.origen, monto: montoFinal, detalle: form.detalle, fecha: form.fecha, usuario: form.usuario || user.email,
+        insumoNombre: null, litrosUsados: null, categoriaGasto: form.categoriaGasto || "Otro", socio: form.socio || "",
+        modoMonto: modoMonto === "porHa" ? "porHa" : null,
+        valorPorHectarea: modoMonto === "porHa" ? Number(valorPorHa) : null,
+        hectareasUsadas: modoMonto === "porHa" ? superficie : null,
+      };
+      if (moneda === "UYU" && modoMonto !== "porHa") { datos.montoPesos = Number(montoPesos); datos.cotizacionUsada = Number(cotizacion); }
     }
     if (archivos.length) { datos.facturaUrls = facturaUrls; datos.facturaNombres = facturaNombres; }
 
@@ -1176,6 +1179,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     const eraEdicion = !!editId;
     setEditId(null); setForm(emptyGasto(user.email)); setArchivos([]); setPreviews([]); setTranscripcion("");
     setTipo("general"); setInsumoSel(""); setLitrosUsados(""); setMoneda("USD"); setMontoPesos("");
+    setModoMonto("total"); setValorPorHa("");
     avisar(eraEdicion ? "Cambios guardados ✓" : "Gasto guardado ✓");
   };
 
@@ -1263,13 +1267,28 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
               <datalist id="origenes-gastos">{origenesSugeridos.map((o) => <option key={o} value={o} />)}</datalist>
             </div>
             <div>
-              <label style={{ fontSize: 12, color: "#8A8570" }}>Moneda</label>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>¿Cómo cargás el monto?</label>
               <div className="flex gap-1">
-                <button type="button" onClick={() => setMoneda("USD")} className="cc-btn" style={{ padding: "8px 12px", fontSize: 12.5, background: moneda === "USD" ? "var(--soil)" : "#fff", color: moneda === "USD" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Dólares</button>
-                <button type="button" onClick={() => setMoneda("UYU")} className="cc-btn" style={{ padding: "8px 12px", fontSize: 12.5, background: moneda === "UYU" ? "var(--gold)" : "#fff", color: moneda === "UYU" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Pesos</button>
+                <button type="button" onClick={() => setModoMonto("total")} className="cc-btn" style={{ padding: "8px 12px", fontSize: 12.5, background: modoMonto === "total" ? "var(--soil)" : "#fff", color: modoMonto === "total" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Monto total</button>
+                <button type="button" onClick={() => setModoMonto("porHa")} className="cc-btn" style={{ padding: "8px 12px", fontSize: 12.5, background: modoMonto === "porHa" ? "var(--soil)" : "#fff", color: modoMonto === "porHa" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>U$S / hectárea</button>
               </div>
             </div>
-            {moneda === "USD" ? (
+
+            {modoMonto === "porHa" ? (
+              <>
+                <div>
+                  <label style={{ fontSize: 12, color: "#8A8570" }}>Valor por hectárea (U$S/ha)</label>
+                  <input className="cc-input" type="number" value={valorPorHa} onChange={(e) => setValorPorHa(e.target.value)} placeholder="Ej: 25" />
+                </div>
+                <div style={{ fontSize: 12.5, color: "#8A8570", display: "flex", alignItems: "end", paddingBottom: 6 }}>
+                  {superficie ? (
+                    <span>{fmt(superficie, 1)} ha × {valorPorHa ? fmtUSD(Number(valorPorHa)) : "U$S -"} = <b style={{ color: "var(--ink)", marginLeft: 4 }}>{fmtUSD(Number(form.monto) || 0)}</b></span>
+                  ) : (
+                    <span style={{ color: "var(--rust)" }}>Este cultivo no tiene hectáreas cargadas — andá a "Lotes" primero.</span>
+                  )}
+                </div>
+              </>
+            ) : moneda === "USD" ? (
               <div><label style={{ fontSize: 12, color: "#8A8570" }}>Monto (U$S)</label><input className="cc-input" type="number" value={form.monto} onChange={(e) => set("monto", e.target.value)} /></div>
             ) : (
               <>
@@ -1280,6 +1299,16 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                 </div>
                 <div style={{ fontSize: 12.5, color: "#8A8570", display: "flex", alignItems: "end", paddingBottom: 6 }}>Equivale a: <b style={{ color: "var(--ink)", marginLeft: 4 }}>{fmtUSD(Number(form.monto) || 0)}</b></div>
               </>
+            )}
+
+            {modoMonto !== "porHa" && (
+              <div>
+                <label style={{ fontSize: 12, color: "#8A8570" }}>Moneda</label>
+                <div className="flex gap-1">
+                  <button type="button" onClick={() => setMoneda("USD")} className="cc-btn" style={{ padding: "8px 12px", fontSize: 12.5, background: moneda === "USD" ? "var(--soil)" : "#fff", color: moneda === "USD" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Dólares</button>
+                  <button type="button" onClick={() => setMoneda("UYU")} className="cc-btn" style={{ padding: "8px 12px", fontSize: 12.5, background: moneda === "UYU" ? "var(--gold)" : "#fff", color: moneda === "UYU" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Pesos</button>
+                </div>
+              </div>
             )}
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Usuario</label><input className="cc-input" value={form.usuario} disabled /></div>
@@ -1307,7 +1336,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
           <div style={{ maxWidth: 320, flex: 1 }}>
             <input className="cc-input" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por origen, detalle o usuario..." />
           </div>
-          <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel(`gastos_${cultivo.nombre}`, [{ nombre: "Gastos", filas: gastos.map((g) => ({ Fecha: g.fecha, Categoría: g.categoriaGasto || (g.insumoNombre ? "Insumo" : "Otro"), Origen: g.origen, Socio: g.socio || "", Detalle: g.detalle, Insumo: g.insumoNombre || "", "Litros usados": g.litrosUsados || "", Usuario: g.usuario, Monto: g.monto })) }])}>
+          <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel(`gastos_${cultivo.nombre}`, [{ nombre: "Gastos", filas: gastos.map((g) => ({ Fecha: g.fecha, Categoría: g.categoriaGasto || (g.insumoNombre ? "Insumo" : "Otro"), Origen: g.origen, Socio: g.socio || "", Detalle: g.detalle, Insumo: g.insumoNombre || "", "Litros usados": g.litrosUsados || "", "U$S/ha": g.valorPorHectarea || "", Usuario: g.usuario, Monto: g.monto })) }])}>
             <Download size={17} /> Exportar Excel
           </button>
         </div>
@@ -1335,6 +1364,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                   <td className="px-3 py-2">
                     {g.origen}
                     {g.insumoNombre && <span className="cc-chip" style={{ background: "#EDE7F6", color: "#5B4B8A", marginLeft: 6 }}>{fmt(g.litrosUsados, 1)} L</span>}
+                    {g.modoMonto === "porHa" && <span className="cc-chip" style={{ background: "#E8F0EA", color: "var(--soil-light)", marginLeft: 6 }}>{fmtUSD(g.valorPorHectarea)}/ha</span>}
                   </td>
                   <td className="px-3 py-2" style={{ color: "#5A5647" }}>{g.socio || "-"}</td>
                   <td className="px-3 py-2" style={{ color: "#5A5647" }}>{g.detalle}</td>
@@ -1342,7 +1372,11 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                     {g.usuario}
                     {g.modificadoPor && g.modificadoPor !== g.usuario && <div style={{ fontStyle: "italic", fontSize: 10.5 }}>editado por {g.modificadoPor}</div>}
                   </td>
-                  <td className="px-3 py-2 text-right cc-mono">{fmtUSD(g.monto)}{g.montoPesos ? <div style={{ fontSize: 10.5, color: "#8A8570", fontWeight: 400 }}>$ {fmt(g.montoPesos, 0)} @ {fmt(g.cotizacionUsada, 2)}</div> : null}</td>
+                  <td className="px-3 py-2 text-right cc-mono">
+                    {fmtUSD(g.monto)}
+                    {g.montoPesos ? <div style={{ fontSize: 10.5, color: "#8A8570", fontWeight: 400 }}>$ {fmt(g.montoPesos, 0)} @ {fmt(g.cotizacionUsada, 2)}</div> : null}
+                    {g.modoMonto === "porHa" ? <div style={{ fontSize: 10.5, color: "#8A8570", fontWeight: 400 }}>{fmt(g.hectareasUsadas, 1)} ha</div> : null}
+                  </td>
                   <td className="px-3 py-2">
                     <div className="flex gap-1">
                       {(g.facturaUrls && g.facturaUrls.length ? g.facturaUrls : g.facturaUrl ? [g.facturaUrl] : []).map((u, i) => (
@@ -1516,9 +1550,6 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas, puedeE
   );
 }
 
-/* ------------------------------------------------------------------ */
-/*  Lotes (referencia global)                                           */
-/* ------------------------------------------------------------------ */
 /* ------------------------------------------------------------------ */
 /*  Usuarios y roles (solo admins)                                       */
 /* ------------------------------------------------------------------ */
@@ -2042,13 +2073,10 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
   const totalIngresosGeneral = filas.reduce((s, f) => s + f.totalIngresos, 0);
   const margenGeneral = totalIngresosGeneral - totalGastosGeneral;
 
-  // Comparar el mismo tipo de cultivo (Soja, Maíz, etc — no el nombre personalizado) entre distintas campañas/años
   const porCultivoNombre = {};
   filas.forEach((f) => { (porCultivoNombre[f.tipoCultivo] ||= []).push(f); });
   const comparables = Object.entries(porCultivoNombre).filter(([, arr]) => arr.length > 1);
 
-  // Aporte por socio, combinando gastos de todos los cultivos + compras de insumos
-  // Solo se cuentan gastos de cultivos que siguen activos (evita arrastrar montos de cultivos ya borrados)
   const cultivoIdsActivos = new Set(cultivos.map((c) => c.id));
   const gastosActivos = gastos.filter((g) => cultivoIdsActivos.has(g.cultivoId));
   const aportesSocio = {};
