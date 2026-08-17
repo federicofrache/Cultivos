@@ -802,7 +802,7 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
 
       {tab === "gastos" && <GastosTab cultivo={cultivo} gastos={gastos} api={gastosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} superficie={superficie} puedeEditar={puedeEditar} />}
       {tab === "ventas" && <VentasTab cultivo={cultivo} ventas={ventas} api={ventasApi} puedeEditar={puedeEditar} />}
-      {tab === "remitos" && <RemitosTab cultivo={cultivo} remitos={remitos} api={remitosApi} lotes={lotes} totalToneladasVentas={totalToneladasVentas} puedeEditar={puedeEditar} />}
+      {tab === "remitos" && <RemitosTab cultivo={cultivo} remitos={remitos} api={remitosApi} lotes={lotes} campos={campos} totalToneladasVentas={totalToneladasVentas} puedeEditar={puedeEditar} />}
     </div>
   );
 }
@@ -1473,20 +1473,28 @@ function VentasTab({ cultivo, ventas, api, puedeEditar = true }) {
 /* ------------------------------------------------------------------ */
 /*  Ingresos · Remitos                                                   */
 /* ------------------------------------------------------------------ */
-function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas, puedeEditar = true }) {
-  const [form, setForm] = useState({ fecha: "", remito: "", campo: "", destino: "", kgTolva: "", kgBrutos: "", kgSL: "", humedad: "" });
+function RemitosTab({ cultivo, remitos, api, lotes, campos = [], totalToneladasVentas, puedeEditar = true }) {
+  const [form, setForm] = useState({ fecha: "", remito: "", campoId: "", loteId: "", destino: "", kgTolva: "", kgBrutos: "", kgSL: "", humedad: "" });
   const set = (k, v) => setForm({ ...form, [k]: v });
   const [mensaje, setMensaje] = useState("");
+
+  const lotesDelCampo = form.campoId ? lotes.filter((l) => l.campoId === form.campoId) : [];
+
+  const elegirCampo = (campoId) => setForm({ ...form, campoId, loteId: "" });
 
   const guardar = () => {
     if (!form.fecha || !form.remito || !form.kgSL) { alert("Completá al menos fecha, N° de remito y Kg SL."); return; }
     if (Number(form.kgSL) <= 0) { alert("Los Kg SL tienen que ser un número mayor a 0."); return; }
     if (form.humedad && (Number(form.humedad) < 0 || Number(form.humedad) > 100)) { alert("La humedad tiene que ser un porcentaje entre 0 y 100."); return; }
+    const campoNombre = campos.find((c) => c.id === form.campoId)?.nombre || "";
+    const loteNombre = lotes.find((l) => l.id === form.loteId)?.nombre || "";
     api.add({
-      cultivoId: cultivo.id, fecha: form.fecha, remito: form.remito, campo: form.campo, destino: form.destino,
+      cultivoId: cultivo.id, fecha: form.fecha, remito: form.remito,
+      campoId: form.campoId || null, campo: campoNombre, loteId: form.loteId || null, lote: loteNombre,
+      destino: form.destino,
       kgTolva: Number(form.kgTolva || 0), kgBrutos: Number(form.kgBrutos || 0), kgSL: Number(form.kgSL || 0), humedad: Number(form.humedad || 0),
     });
-    setForm({ fecha: "", remito: "", campo: "", destino: "", kgTolva: "", kgBrutos: "", kgSL: "", humedad: "" });
+    setForm({ fecha: "", remito: "", campoId: "", loteId: "", destino: "", kgTolva: "", kgBrutos: "", kgSL: "", humedad: "" });
     setMensaje("Remito guardado ✓"); setTimeout(() => setMensaje(""), 2500);
   };
   const eliminar = (id) => { if (confirm("Este remito se moverá a la papelera. ¿Continuar?")) api.remove(id); };
@@ -1501,8 +1509,18 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas, puedeE
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>N° Remito</label><input className="cc-input" value={form.remito} onChange={(e) => set("remito", e.target.value)} /></div>
           <div>
             <label style={{ fontSize: 12, color: "#8A8570" }}>Campo</label>
-            <input className="cc-input" list="lotes-list" value={form.campo} onChange={(e) => set("campo", e.target.value)} placeholder="Lote / establecimiento" />
-            <datalist id="lotes-list">{lotes.map((l) => <option key={l.id} value={l.nombre} />)}</datalist>
+            <select className="cc-input" value={form.campoId} onChange={(e) => elegirCampo(e.target.value)}>
+              <option value="">Elegir campo...</option>
+              {campos.map((c) => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+            </select>
+          </div>
+          <div>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Lote</label>
+            <select className="cc-input" value={form.loteId} onChange={(e) => set("loteId", e.target.value)} disabled={!form.campoId}>
+              <option value="">{form.campoId ? "Elegir lote..." : "Elegí un campo primero"}</option>
+              {lotesDelCampo.map((l) => <option key={l.id} value={l.id}>{l.nombre}{l.hectareas ? ` (${fmt(l.hectareas, 1)} ha)` : ""}</option>)}
+            </select>
+            {form.campoId && lotesDelCampo.length === 0 && <div style={{ fontSize: 11.5, color: "#8A8570" }}>Ese campo todavía no tiene lotes cargados.</div>}
           </div>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Destino</label><input className="cc-input" value={form.destino} onChange={(e) => set("destino", e.target.value)} placeholder="Silo / planta" /></div>
           <div><label style={{ fontSize: 12, color: "#8A8570" }}>Kg tolva</label><input className="cc-input" type="number" value={form.kgTolva} onChange={(e) => set("kgTolva", e.target.value)} /></div>
@@ -1519,7 +1537,7 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas, puedeE
 
       {remitos.length > 0 && (
         <div className="flex justify-end">
-          <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel(`remitos_${cultivo.nombre}`, [{ nombre: "Remitos", filas: remitos.map((r) => ({ Fecha: r.fecha, Remito: r.remito, Campo: r.campo, Destino: r.destino, "Kg tolva": r.kgTolva, "Kg brutos": r.kgBrutos, "Kg SL": r.kgSL, "Humedad %": r.humedad })) }])}>
+          <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel(`remitos_${cultivo.nombre}`, [{ nombre: "Remitos", filas: remitos.map((r) => ({ Fecha: r.fecha, Remito: r.remito, Campo: r.campo, Lote: r.lote, Destino: r.destino, "Kg tolva": r.kgTolva, "Kg brutos": r.kgBrutos, "Kg SL": r.kgSL, "Humedad %": r.humedad })) }])}>
             <Download size={17} /> Exportar Excel
           </button>
         </div>
@@ -1528,18 +1546,18 @@ function RemitosTab({ cultivo, remitos, api, lotes, totalToneladasVentas, puedeE
       {remitos.length === 0 ? <EmptyState icon={Truck} title="Sin remitos cargados" text="Cargá cada remito de entrega de grano con sus kilos seco y limpio (Kg SL)." /> : (
         <div className="cc-card overflow-hidden">
           <table className="w-full" style={{ fontSize: 12.5 }}>
-            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Remito</th><th className="px-3 py-2">Campo</th><th className="px-3 py-2">Destino</th><th className="px-3 py-2 text-right">Kg tolva</th><th className="px-3 py-2 text-right">Kg brutos</th><th className="px-3 py-2 text-right">Kg SL</th><th className="px-3 py-2 text-right">Hum.%</th><th className="px-3 py-2"></th></tr></thead>
+            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Remito</th><th className="px-3 py-2">Campo</th><th className="px-3 py-2">Lote</th><th className="px-3 py-2">Destino</th><th className="px-3 py-2 text-right">Kg tolva</th><th className="px-3 py-2 text-right">Kg brutos</th><th className="px-3 py-2 text-right">Kg SL</th><th className="px-3 py-2 text-right">Hum.%</th><th className="px-3 py-2"></th></tr></thead>
             <tbody>
               {[...remitos].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((r) => (
                 <tr key={r.id} style={{ borderTop: "1px solid var(--line)" }}>
-                  <td className="px-3 py-2 cc-mono">{r.fecha}</td><td className="px-3 py-2">{r.remito}</td><td className="px-3 py-2">{r.campo}</td><td className="px-3 py-2">{r.destino}</td>
+                  <td className="px-3 py-2 cc-mono">{r.fecha}</td><td className="px-3 py-2">{r.remito}</td><td className="px-3 py-2">{r.campo || "-"}</td><td className="px-3 py-2">{r.lote || "-"}</td><td className="px-3 py-2">{r.destino}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmt(r.kgTolva)}</td><td className="px-3 py-2 text-right cc-mono">{fmt(r.kgBrutos)}</td>
                   <td className="px-3 py-2 text-right cc-mono">{fmt(r.kgSL)}</td><td className="px-3 py-2 text-right cc-mono">{fmt(r.humedad, 1)}</td>
                   <td className="px-3 py-2 text-right">{puedeEditar && <button onClick={() => eliminar(r.id)}><Trash2 size={16} color="var(--rust)" /></button>}</td>
                 </tr>
               ))}
             </tbody>
-            <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}><td className="px-3 py-2" colSpan={6}>Total Kg SL</td><td className="px-3 py-2 text-right cc-mono">{fmt(totalKgSL)}</td><td colSpan={2}></td></tr></tfoot>
+            <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}><td className="px-3 py-2" colSpan={7}>Total Kg SL</td><td className="px-3 py-2 text-right cc-mono">{fmt(totalKgSL)}</td><td colSpan={2}></td></tr></tfoot>
           </table>
           <div className="px-3 py-2" style={{ fontSize: 12, color: "#8A8570", borderTop: "1px solid var(--line)" }}>
             Equivalente a {fmt(totalKgSL / 1000, 2)} tn — {Math.abs(totalKgSL / 1000 - totalToneladasVentas) < 0.05 && totalToneladasVentas > 0 ? "coincide con las ventas cargadas." : `las ventas cargadas suman ${fmt(totalToneladasVentas, 2)} tn.`}
