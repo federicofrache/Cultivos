@@ -236,6 +236,7 @@ export default function App() {
   const [camposRaw, setCamposRaw] = useState([]);
   const [lotesRaw, setLotesRaw] = useState([]);
   const [insumosComprasRaw, setInsumosComprasRaw] = useState([]);
+  const [puntosStockRaw, setPuntosStockRaw] = useState([]);
   const [gastosRaw, setGastosRaw] = useState([]);
   const [ventasRaw, setVentasRaw] = useState([]);
   const [remitosRaw, setRemitosRaw] = useState([]);
@@ -256,7 +257,8 @@ export default function App() {
     const u7 = onSnapshot(collection(db, "remitos"), (s) => setRemitosRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
     const u8 = onSnapshot(collection(db, "campos"), (s) => setCamposRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
     const u9 = onSnapshot(collection(db, "usuarios"), (s) => setUsuariosRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); };
+    const u10 = onSnapshot(collection(db, "puntos_stock"), (s) => setPuntosStockRaw(s.docs.map((d) => ({ id: d.id, ...d.data() }))));
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); u8(); u9(); u10(); };
   }, [user]);
 
   const miUsuario = usuariosRaw.find((u) => u.id === user?.email);
@@ -276,6 +278,7 @@ export default function App() {
   const campoIdsActivos = new Set(campos.map((c) => c.id));
   const lotes = lotesRaw.filter((x) => !x.eliminado && esDeMiWorkspace(x) && (!x.campoId || campoIdsActivos.has(x.campoId)));
   const insumosCompras = insumosComprasRaw.filter((x) => !x.eliminado && esDeMiWorkspace(x));
+  const puntosStock = puntosStockRaw.filter((x) => !x.eliminado && esDeMiWorkspace(x));
   const gastosTodos = gastosRaw.filter((x) => !x.eliminado && cultivoIdsActivos.has(x.cultivoId));
   const ventasTodas = ventasRaw.filter((x) => !x.eliminado && cultivoIdsActivos.has(x.cultivoId));
   const remitosTodos = remitosRaw.filter((x) => !x.eliminado && cultivoIdsActivos.has(x.cultivoId));
@@ -298,21 +301,27 @@ export default function App() {
   const camposApi = softDeleteApi("campos");
   const lotesApi = softDeleteApi("lotes");
   const insumosApi = softDeleteApi("insumos_compras");
+  const puntosStockApi = softDeleteApi("puntos_stock");
   const ventasApiGlobal = softDeleteApi("ventas");
   const remitosApiGlobal = softDeleteApi("remitos");
   const gastosApiGlobal = softDeleteApi("gastos");
 
+  // Clave de agrupación: mismo insumo en distintos puntos de stock se llevan por separado
+  const clavePunto = (nombre, puntoStockId) => `${nombre}||${puntoStockId || "sin_punto"}`;
+
   const stockInsumos = (() => {
     const mapa = {};
     insumosCompras.forEach((c) => {
-      const k = c.nombre;
-      if (!mapa[k]) mapa[k] = { nombre: k, litrosComprados: 0, costoComprado: 0, litrosConsumidos: 0, unidad: c.unidad || "Litros" };
+      const k = clavePunto(c.nombre, c.puntoStockId);
+      if (!mapa[k]) mapa[k] = { nombre: c.nombre, puntoStockId: c.puntoStockId || null, puntoStockNombre: c.puntoStockNombre || "Sin punto asignado", litrosComprados: 0, costoComprado: 0, litrosConsumidos: 0, unidad: c.unidad || "Litros" };
       mapa[k].litrosComprados += Number(c.litros || 0);
       mapa[k].costoComprado += Number(c.precio || 0);
       mapa[k].unidad = c.unidad || "Litros";
     });
     gastosTodos.forEach((g) => {
-      if (g.insumoNombre && mapa[g.insumoNombre]) mapa[g.insumoNombre].litrosConsumidos += Number(g.litrosUsados || 0);
+      if (!g.insumoNombre) return;
+      const k = clavePunto(g.insumoNombre, g.puntoStockId);
+      if (mapa[k]) mapa[k].litrosConsumidos += Number(g.litrosUsados || 0);
     });
     return Object.values(mapa).map((i) => ({
       ...i,
@@ -412,7 +421,7 @@ export default function App() {
           <LotesView campo={campoActual} lotes={campoActual.id === "__sin_campo__" ? lotes.filter((l) => !l.campoId) : lotes.filter((l) => l.campoId === campoActual.id)} api={lotesApi} sinCampo={campoActual.id === "__sin_campo__"} campos={campos} puedeEditar={puedeEditar} />
         )}
 
-        {nav.view === "insumos" && <InsumosView compras={insumosCompras} api={insumosApi} stockInsumos={stockInsumos} user={user} puedeEditar={puedeEditar} />}
+        {nav.view === "insumos" && <InsumosView compras={insumosCompras} api={insumosApi} stockInsumos={stockInsumos} user={user} puedeEditar={puedeEditar} puntosStock={puntosStock} puntosStockApi={puntosStockApi} />}
 
         {nav.view === "resumen_general" && (
           <ResumenGeneralView campanias={campanias} cultivos={cultivos} gastos={gastosTodos} ventas={ventasTodas} remitos={remitosTodos} lotes={lotes} insumosCompras={insumosCompras}
@@ -429,6 +438,7 @@ export default function App() {
               { titulo: "Campos", items: camposRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: camposApi, campo: (x) => x.nombre },
               { titulo: "Lotes", items: lotesRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: lotesApi, campo: (x) => x.nombre },
               { titulo: "Insumos (compras)", items: insumosComprasRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: insumosApi, campo: (x) => `${x.nombre} — ${fmt(x.litros, 1)} ${abrevUnidad(x.unidad)}` },
+              { titulo: "Puntos de stock", items: puntosStockRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: puntosStockApi, campo: (x) => x.nombre },
               { titulo: "Gastos", items: gastosRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: gastosApiGlobal, campo: (x) => `${x.origen} — ${fmtUSD(x.monto)}` },
               { titulo: "Ventas", items: ventasRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: ventasApiGlobal, campo: (x) => `${x.origen} — ${fmt(x.toneladas, 2)} tn` },
               { titulo: "Remitos", items: remitosRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: remitosApiGlobal, campo: (x) => `Remito ${x.remito}` },
@@ -1037,18 +1047,20 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
 
   const origenesSugeridos = Array.from(new Set(gastos.map((g) => g.origen).filter(Boolean)));
   const sociosSugeridos = Array.from(new Set(gastos.map((g) => g.socio).filter(Boolean)));
-  const insumoElegido = stockInsumos.find((i) => i.nombre === insumoSel);
-  const comprasDeEsteInsumo = insumosCompras.filter((c) => c.nombre === insumoSel);
+  const insumoElegido = stockInsumos.find((i) => `${i.nombre}||${i.puntoStockId || "sin_punto"}` === insumoSel);
+  const insumoNombreSel = insumoElegido?.nombre || "";
+  const puntoStockIdSel = insumoElegido?.puntoStockId || null;
+  const comprasDeEsteInsumo = insumosCompras.filter((c) => c.nombre === insumoNombreSel && (c.puntoStockId || null) === puntoStockIdSel);
   const litrosYaConsumidosPorOtros = gastosTodos
-    .filter((g) => g.insumoNombre === insumoSel && g.id !== editId)
+    .filter((g) => g.insumoNombre === insumoNombreSel && (g.puntoStockId || null) === puntoStockIdSel && g.id !== editId)
     .reduce((s, g) => s + Number(g.litrosUsados || 0), 0);
-  const fifo = insumoSel ? costoFIFO(comprasDeEsteInsumo, litrosYaConsumidosPorOtros, Number(litrosUsados || 0)) : { costoTotal: 0, costoPromedioEfectivo: 0 };
+  const fifo = insumoElegido ? costoFIFO(comprasDeEsteInsumo, litrosYaConsumidosPorOtros, Number(litrosUsados || 0)) : { costoTotal: 0, costoPromedioEfectivo: 0 };
   const montoCalculado = fifo.costoTotal;
 
   const editar = (g) => {
     setEditId(g.id);
     if (g.insumoNombre) {
-      setTipo("insumo"); setInsumoSel(g.insumoNombre); setLitrosUsados(String(g.litrosUsados ?? ""));
+      setTipo("insumo"); setInsumoSel(`${g.insumoNombre}||${g.puntoStockId || "sin_punto"}`); setLitrosUsados(String(g.litrosUsados ?? ""));
       setForm({ origen: g.origen || "", monto: g.monto ?? "", detalle: g.detalle || "", fecha: g.fecha || "", usuario: g.usuario || user.email, categoriaGasto: "Insumo", socio: g.socio || "" });
     } else {
       setTipo("general"); setInsumoSel(""); setLitrosUsados("");
@@ -1062,7 +1074,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
   const duplicar = (g) => {
     setEditId(null);
     if (g.insumoNombre) {
-      setTipo("insumo"); setInsumoSel(g.insumoNombre); setLitrosUsados(String(g.litrosUsados ?? ""));
+      setTipo("insumo"); setInsumoSel(`${g.insumoNombre}||${g.puntoStockId || "sin_punto"}`); setLitrosUsados(String(g.litrosUsados ?? ""));
       setForm({ origen: g.origen || "", monto: "", detalle: g.detalle || "", fecha: "", usuario: user.email, categoriaGasto: "Insumo", socio: g.socio || "" });
     } else {
       setTipo("general"); setInsumoSel(""); setLitrosUsados("");
@@ -1129,7 +1141,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
       if (!insumoSel || !litrosUsados || !form.fecha) { alert("Elegí el insumo, los litros usados y la fecha."); return; }
       if (Number(litrosUsados) <= 0) { alert("Los litros usados tienen que ser un número mayor a 0."); return; }
       if (!editId && Number(litrosUsados) > (insumoElegido?.disponible || 0)) {
-        if (!confirm(`Solo hay ${fmt(insumoElegido?.disponible || 0, 1)} ${abrevUnidad(insumoElegido?.unidad)} disponibles de ${insumoSel}. ¿Registrar igual el consumo?`)) return;
+        if (!confirm(`Solo hay ${fmt(insumoElegido?.disponible || 0, 1)} ${abrevUnidad(insumoElegido?.unidad)} disponibles de ${insumoNombreSel} en ${insumoElegido?.puntoStockNombre || "ese punto"}. ¿Registrar igual el consumo?`)) return;
       }
     } else if (modoMonto === "porHa") {
       if (!superficie) { alert("Este cultivo todavía no tiene hectáreas cargadas — andá a la pestaña \"Lotes\" para asociarle lotes, o cargá el gasto por monto total."); return; }
@@ -1158,8 +1170,9 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
     let datos;
     if (tipo === "insumo") {
       datos = {
-        origen: form.origen || insumoSel, monto: montoCalculado, detalle: form.detalle || `Consumo de ${insumoSel} — ${litrosUsados} L`,
-        fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: insumoSel, litrosUsados: Number(litrosUsados), costoPorLitro: fifo.costoPromedioEfectivo,
+        origen: form.origen || insumoNombreSel, monto: montoCalculado, detalle: form.detalle || `Consumo de ${insumoNombreSel} — ${litrosUsados} L`,
+        fecha: form.fecha, usuario: form.usuario || user.email, insumoNombre: insumoNombreSel, litrosUsados: Number(litrosUsados), costoPorLitro: fifo.costoPromedioEfectivo,
+        puntoStockId: puntoStockIdSel, puntoStockNombre: insumoElegido?.puntoStockNombre || "",
         categoriaGasto: "Insumo", socio: form.socio || "", modoMonto: null, valorPorHectarea: null,
       };
     } else {
@@ -1240,10 +1253,14 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
         {tipo === "insumo" ? (
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))" }}>
             <div>
-              <label style={{ fontSize: 12, color: "#8A8570" }}>Insumo</label>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Insumo (punto de stock)</label>
               <select className="cc-input" value={insumoSel} onChange={(e) => setInsumoSel(e.target.value)}>
                 <option value="">Elegir...</option>
-                {stockInsumos.map((i) => <option key={i.nombre} value={i.nombre}>{i.nombre} ({fmt(i.disponible, 1)} {abrevUnidad(i.unidad)} disp.)</option>)}
+                {[...stockInsumos].sort((a, b) => a.nombre.localeCompare(b.nombre) || a.puntoStockNombre.localeCompare(b.puntoStockNombre)).map((i) => (
+                  <option key={`${i.nombre}||${i.puntoStockId || "sin_punto"}`} value={`${i.nombre}||${i.puntoStockId || "sin_punto"}`}>
+                    {i.nombre} — {i.puntoStockNombre} ({fmt(i.disponible, 1)} {abrevUnidad(i.unidad)} disp.)
+                  </option>
+                ))}
               </select>
               {stockInsumos.length === 0 && <div style={{ fontSize: 11.5, color: "#8A8570" }}>No hay insumos cargados todavía — cargalos desde "Insumos" en el menú superior.</div>}
             </div>
@@ -1255,7 +1272,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
               <input className="cc-input" list="socios-gastos" value={form.socio} onChange={(e) => set("socio", e.target.value)} placeholder="Ej: Juan Pérez" />
               <datalist id="socios-gastos">{sociosSugeridos.map((s) => <option key={s} value={s} />)}</datalist>
             </div>
-            <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 12, color: "#8A8570" }}>Detalle (opcional)</label><input className="cc-input" value={form.detalle} onChange={(e) => set("detalle", e.target.value)} placeholder={insumoSel ? `Consumo de ${insumoSel}` : ""} /></div>
+            <div style={{ gridColumn: "1 / -1" }}><label style={{ fontSize: 12, color: "#8A8570" }}>Detalle (opcional)</label><input className="cc-input" value={form.detalle} onChange={(e) => set("detalle", e.target.value)} placeholder={insumoNombreSel ? `Consumo de ${insumoNombreSel}` : ""} /></div>
           </div>
         ) : (
           <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(150px,1fr))" }}>
@@ -1367,7 +1384,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                   </td>
                   <td className="px-3 py-2">
                     {g.origen}
-                    {g.insumoNombre && <span className="cc-chip" style={{ background: "#EDE7F6", color: "#5B4B8A", marginLeft: 6 }}>{fmt(g.litrosUsados, 1)} L</span>}
+                    {g.insumoNombre && <span className="cc-chip" style={{ background: "#EDE7F6", color: "#5B4B8A", marginLeft: 6 }}>{fmt(g.litrosUsados, 1)} L{g.puntoStockNombre ? ` · ${g.puntoStockNombre}` : ""}</span>}
                     {g.modoMonto === "porHa" && <span className="cc-chip" style={{ background: "#E8F0EA", color: "var(--soil-light)", marginLeft: 6 }}>{fmtUSD(g.valorPorHectarea)}/ha</span>}
                   </td>
                   <td className="px-3 py-2" style={{ color: "#5A5647" }}>{g.socio || "-"}</td>
@@ -1846,11 +1863,12 @@ function LotesView({ campo, lotes, api, sinCampo, campos = [], puedeEditar = tru
 /* ------------------------------------------------------------------ */
 const emptyItemInsumo = () => ({ nombre: "", litros: "", unidad: "Litros", precioUnitario: "" });
 
-function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true }) {
+function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true, puntosStock, puntosStockApi }) {
   const [fecha, setFecha] = useState("");
   const [origen, setOrigen] = useState("");
   const [socio, setSocio] = useState("");
   const [numeroFactura, setNumeroFactura] = useState("");
+  const [puntoStockId, setPuntoStockId] = useState("");
   const [items, setItems] = useState([emptyItemInsumo()]);
   const [archivo, setArchivo] = useState(null);
   const [preview, setPreview] = useState(null);
@@ -1861,6 +1879,8 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true }) {
   const [error, setError] = useState("");
   const [mensaje, setMensaje] = useState("");
   const [busqueda, setBusqueda] = useState("");
+  const [nuevoPunto, setNuevoPunto] = useState("");
+  const [gestionandoPuntos, setGestionandoPuntos] = useState(false);
 
   const origenesSugeridos = Array.from(new Set(compras.map((c) => c.origen).filter(Boolean)));
   const nombresSugeridos = Array.from(new Set(compras.map((c) => c.nombre).filter(Boolean)));
@@ -1916,10 +1936,12 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true }) {
       } catch (e) { alert("No se pudo subir la factura adjunta, pero se guardará la compra sin el archivo."); }
       setSubiendo(false);
     }
+    const puntoNombre = puntosStock.find((p) => p.id === puntoStockId)?.nombre || "";
     await Promise.all(validos.map((it) => api.add({
       fecha, origen, nombre: it.nombre, litros: Number(it.litros), unidad: it.unidad || "Litros",
       precio: Number(it.litros) * Number(it.precioUnitario), precioUnitario: Number(it.precioUnitario),
       facturaUrl, facturaNombre, numeroFactura: numeroFactura || "", usuario: user.email, socio: socio || "",
+      puntoStockId: puntoStockId || null, puntoStockNombre: puntoNombre || "Sin punto asignado",
     })));
     setFecha(""); setOrigen(""); setSocio(""); setNumeroFactura(""); setItems([emptyItemInsumo()]); setArchivo(null); setPreview(null); setImgB64(null);
     setMensaje("Compra guardada ✓"); setTimeout(() => setMensaje(""), 2500);
@@ -1961,6 +1983,40 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true }) {
             <label style={{ fontSize: 12, color: "#8A8570" }}>N° de factura (opcional)</label>
             <input className="cc-input" value={numeroFactura} onChange={(e) => setNumeroFactura(e.target.value)} placeholder="Ej: A-0001234" />
           </div>
+          <div>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Punto de stock</label>
+            <select className="cc-input" value={puntoStockId} onChange={(e) => setPuntoStockId(e.target.value)}>
+              <option value="">Sin punto asignado</option>
+              {puntosStock.map((p) => <option key={p.id} value={p.id}>{p.nombre}</option>)}
+            </select>
+          </div>
+        </div>
+
+        <div>
+          <button className="cc-btn cc-btn-ghost" onClick={() => setGestionandoPuntos((v) => !v)}><Boxes size={17} /> {gestionandoPuntos ? "Ocultar" : "Gestionar"} puntos de stock</button>
+          {gestionandoPuntos && (
+            <div className="mt-3 p-3" style={{ background: "#F7F5EC", borderRadius: 8, border: "1px solid var(--line)" }}>
+              <div className="flex gap-2 flex-wrap items-end mb-3">
+                <div style={{ flex: 1, minWidth: 160 }}>
+                  <label style={{ fontSize: 12, color: "#8A8570" }}>Nombre del punto (ej: Depósito Central, Silo Norte)</label>
+                  <input className="cc-input" value={nuevoPunto} onChange={(e) => setNuevoPunto(e.target.value)} />
+                </div>
+                <button className="cc-btn cc-btn-primary" onClick={async () => { if (!nuevoPunto.trim()) return; await puntosStockApi.add({ nombre: nuevoPunto.trim() }); setNuevoPunto(""); }}><Plus size={17} /> Agregar</button>
+              </div>
+              {puntosStock.length === 0 ? (
+                <div style={{ fontSize: 13, color: "#8A8570" }}>Todavía no hay puntos de stock cargados.</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {puntosStock.map((p) => (
+                    <span key={p.id} className="cc-chip" style={{ background: "#EEEADA", display: "flex", alignItems: "center", gap: 6, padding: "6px 10px" }}>
+                      {p.nombre}
+                      <button onClick={() => { if (confirm(`¿Eliminar el punto "${p.nombre}"? Se moverá a la papelera.`)) puntosStockApi.remove(p.id); }}><X size={13} color="var(--rust)" /></button>
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         <div>
@@ -2011,11 +2067,12 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true }) {
         {stockInsumos.length === 0 ? <EmptyState icon={Boxes} title="Sin insumos cargados" text="Cuando registres una compra, el stock disponible va a aparecer acá." /> : (
           <div className="cc-card overflow-hidden">
             <table className="w-full" style={{ fontSize: 13 }}>
-              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Comprado</th><th className="px-3 py-2 text-right">Consumido</th><th className="px-3 py-2 text-right">Disponible</th><th className="px-3 py-2 text-right">Costo prom. / unidad</th></tr></thead>
+              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Insumo</th><th className="px-3 py-2">Punto de stock</th><th className="px-3 py-2 text-right">Comprado</th><th className="px-3 py-2 text-right">Consumido</th><th className="px-3 py-2 text-right">Disponible</th><th className="px-3 py-2 text-right">Costo prom. / unidad</th></tr></thead>
               <tbody>
-                {stockInsumos.sort((a, b) => a.nombre.localeCompare(b.nombre)).map((i) => (
-                  <tr key={i.nombre} style={{ borderTop: "1px solid var(--line)", background: i.disponible <= 0 ? "#FBEAEA" : "transparent" }}>
+                {[...stockInsumos].sort((a, b) => a.nombre.localeCompare(b.nombre) || a.puntoStockNombre.localeCompare(b.puntoStockNombre)).map((i) => (
+                  <tr key={`${i.nombre}||${i.puntoStockId || "sin_punto"}`} style={{ borderTop: "1px solid var(--line)", background: i.disponible <= 0 ? "#FBEAEA" : "transparent" }}>
                     <td className="px-3 py-2">{i.nombre} {i.disponible < 0 && <AlertCircle size={13} color="var(--rust)" style={{ display: "inline", marginLeft: 4, verticalAlign: "-2px" }} />}</td>
+                    <td className="px-3 py-2" style={{ color: "#5A5647" }}>{i.puntoStockNombre}</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmt(i.litrosComprados, 1)} {abrevUnidad(i.unidad)}</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmt(i.litrosConsumidos, 1)} {abrevUnidad(i.unidad)}</td>
                     <td className="px-3 py-2 text-right cc-mono" style={{ color: i.disponible <= 0 ? "var(--rust)" : "var(--soil-light)", fontWeight: 700 }}>{fmt(i.disponible, 1)} {abrevUnidad(i.unidad)}</td>
@@ -2034,7 +2091,7 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true }) {
           <div className="flex items-center gap-2">
             {compras.length > 0 && <input className="cc-input" style={{ maxWidth: 280 }} value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por insumo u origen..." />}
             {compras.length > 0 && (
-              <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel("compras_insumos", [{ nombre: "Compras", filas: compras.map((c) => ({ Fecha: c.fecha, Origen: c.origen, "N° factura": c.numeroFactura || "", Socio: c.socio || "", Insumo: c.nombre, Cantidad: c.litros, Unidad: c.unidad || "Litros", "Precio por unidad": c.precioUnitario ?? (c.litros ? c.precio / c.litros : ""), "Precio total": c.precio })) }, { nombre: "Stock", filas: stockInsumos.map((i) => ({ Insumo: i.nombre, Unidad: i.unidad, Comprado: i.litrosComprados, Consumido: i.litrosConsumidos, Disponible: i.disponible, "Costo prom/unidad": i.costoPromedioPorLitro })) }])}>
+              <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel("compras_insumos", [{ nombre: "Compras", filas: compras.map((c) => ({ Fecha: c.fecha, Origen: c.origen, "N° factura": c.numeroFactura || "", Socio: c.socio || "", "Punto de stock": c.puntoStockNombre || "Sin punto asignado", Insumo: c.nombre, Cantidad: c.litros, Unidad: c.unidad || "Litros", "Precio por unidad": c.precioUnitario ?? (c.litros ? c.precio / c.litros : ""), "Precio total": c.precio })) }, { nombre: "Stock", filas: stockInsumos.map((i) => ({ Insumo: i.nombre, "Punto de stock": i.puntoStockNombre, Unidad: i.unidad, Comprado: i.litrosComprados, Consumido: i.litrosConsumidos, Disponible: i.disponible, "Costo prom/unidad": i.costoPromedioPorLitro })) }])}>
                 <Download size={17} /> Exportar Excel
               </button>
             )}
@@ -2043,7 +2100,7 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true }) {
         {compras.length === 0 ? <EmptyState icon={Receipt} title="Sin compras registradas" text="Registrá tu primera compra de insumos arriba." /> : (
           <div className="cc-card overflow-hidden">
             <table className="w-full" style={{ fontSize: 12.5 }}>
-              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">N° factura</th><th className="px-3 py-2">Socio</th><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Litros</th><th className="px-3 py-2 text-right">Precio</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
+              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">N° factura</th><th className="px-3 py-2">Socio</th><th className="px-3 py-2">Punto de stock</th><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Litros</th><th className="px-3 py-2 text-right">Precio</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
               <tbody>
                 {[...compras]
                   .filter((c) => {
@@ -2057,6 +2114,7 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true }) {
                     <td className="px-3 py-2">{c.origen}</td>
                     <td className="px-3 py-2 cc-mono" style={{ color: "#5A5647" }}>{c.numeroFactura || "-"}</td>
                     <td className="px-3 py-2" style={{ color: "#5A5647" }}>{c.socio || "-"}</td>
+                    <td className="px-3 py-2" style={{ color: "#5A5647" }}>{c.puntoStockNombre || "Sin punto asignado"}</td>
                     <td className="px-3 py-2">{c.nombre}</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmt(c.litros, 1)} {abrevUnidad(c.unidad)}</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmtUSD(c.precio)}</td>
