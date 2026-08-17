@@ -263,15 +263,19 @@ export default function App() {
   const miRol = miUsuario?.rol || "admin";
   const puedeEditar = miRol !== "lectura";
   const esAdmin = miRol === "admin";
+  // "default" = el espacio compartido de siempre (el de todo tu equipo). Si a un usuario
+  // le asignás otro valor en "Usuarios", pasa a tener su propio espacio, separado del resto.
+  const miWorkspaceId = miUsuario?.workspaceId || "default";
+  const esDeMiWorkspace = (x) => (x.workspaceId || "default") === miWorkspaceId;
 
-  const campanias = campaniasRaw.filter((x) => !x.eliminado);
+  const campanias = campaniasRaw.filter((x) => !x.eliminado && esDeMiWorkspace(x));
   const campaniaIdsActivas = new Set(campanias.map((c) => c.id));
   const cultivos = cultivosRaw.filter((x) => !x.eliminado && campaniaIdsActivas.has(x.campaniaId));
   const cultivoIdsActivos = new Set(cultivos.map((c) => c.id));
-  const campos = camposRaw.filter((x) => !x.eliminado);
+  const campos = camposRaw.filter((x) => !x.eliminado && esDeMiWorkspace(x));
   const campoIdsActivos = new Set(campos.map((c) => c.id));
-  const lotes = lotesRaw.filter((x) => !x.eliminado && (!x.campoId || campoIdsActivos.has(x.campoId)));
-  const insumosCompras = insumosComprasRaw.filter((x) => !x.eliminado);
+  const lotes = lotesRaw.filter((x) => !x.eliminado && esDeMiWorkspace(x) && (!x.campoId || campoIdsActivos.has(x.campoId)));
+  const insumosCompras = insumosComprasRaw.filter((x) => !x.eliminado && esDeMiWorkspace(x));
   const gastosTodos = gastosRaw.filter((x) => !x.eliminado && cultivoIdsActivos.has(x.cultivoId));
   const ventasTodas = ventasRaw.filter((x) => !x.eliminado && cultivoIdsActivos.has(x.cultivoId));
   const remitosTodos = remitosRaw.filter((x) => !x.eliminado && cultivoIdsActivos.has(x.cultivoId));
@@ -282,7 +286,7 @@ export default function App() {
   if (!user) return <Login />;
 
   const softDeleteApi = (coleccion) => ({
-    add: (data) => addDoc(collection(db, coleccion), { ...data, creadoPor: user.email, creadoEn: new Date().toISOString() }),
+    add: (data) => addDoc(collection(db, coleccion), { ...data, workspaceId: miWorkspaceId, creadoPor: user.email, creadoEn: new Date().toISOString() }),
     update: (id, data) => updateDoc(doc(db, coleccion, id), { ...data, modificadoPor: user.email, modificadoEn: new Date().toISOString() }),
     remove: (id) => updateDoc(doc(db, coleccion, id), { eliminado: true, eliminadoEn: new Date().toISOString(), eliminadoPor: user.email }),
     restaurar: (id) => updateDoc(doc(db, coleccion, id), { eliminado: false, eliminadoEn: null, eliminadoPor: null }),
@@ -400,7 +404,7 @@ export default function App() {
             onOpen={(id) => setNav({ view: "cultivo", campaniaId: campaniaActual.id, cultivoId: id })} puedeEditar={puedeEditar} />
         )}
 
-        {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} campos={campos} puedeEditar={puedeEditar} />}
+        {nav.view === "cultivo" && cultivoActual && <CultivoDetail cultivo={cultivoActual} lotes={lotes} lotesApi={lotesApi} cultivosApi={cultivosApi} user={user} stockInsumos={stockInsumos} insumosCompras={insumosCompras} gastosTodos={gastosTodos} campos={campos} puedeEditar={puedeEditar} miWorkspaceId={miWorkspaceId} />}
 
         {nav.view === "campos" && <CamposView campos={campos} api={camposApi} lotesApi={lotesApi} lotes={lotes} onOpen={(id) => setNav({ view: "lotes", campaniaId: null, cultivoId: null, campoId: id })} puedeEditar={puedeEditar} />}
 
@@ -420,14 +424,14 @@ export default function App() {
         {nav.view === "papelera" && (
           <PapeleraView
             grupos={[
-              { titulo: "Campañas", items: campaniasRaw.filter((x) => x.eliminado), api: campaniasApi, campo: (x) => x.nombre || x.anio },
-              { titulo: "Cultivos", items: cultivosRaw.filter((x) => x.eliminado), api: cultivosApi, campo: (x) => x.nombre },
-              { titulo: "Campos", items: camposRaw.filter((x) => x.eliminado), api: camposApi, campo: (x) => x.nombre },
-              { titulo: "Lotes", items: lotesRaw.filter((x) => x.eliminado), api: lotesApi, campo: (x) => x.nombre },
-              { titulo: "Insumos (compras)", items: insumosComprasRaw.filter((x) => x.eliminado), api: insumosApi, campo: (x) => `${x.nombre} — ${fmt(x.litros, 1)} ${abrevUnidad(x.unidad)}` },
-              { titulo: "Gastos", items: gastosRaw.filter((x) => x.eliminado), api: gastosApiGlobal, campo: (x) => `${x.origen} — ${fmtUSD(x.monto)}` },
-              { titulo: "Ventas", items: ventasRaw.filter((x) => x.eliminado), api: ventasApiGlobal, campo: (x) => `${x.origen} — ${fmt(x.toneladas, 2)} tn` },
-              { titulo: "Remitos", items: remitosRaw.filter((x) => x.eliminado), api: remitosApiGlobal, campo: (x) => `Remito ${x.remito}` },
+              { titulo: "Campañas", items: campaniasRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: campaniasApi, campo: (x) => x.nombre || x.anio },
+              { titulo: "Cultivos", items: cultivosRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: cultivosApi, campo: (x) => x.nombre },
+              { titulo: "Campos", items: camposRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: camposApi, campo: (x) => x.nombre },
+              { titulo: "Lotes", items: lotesRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: lotesApi, campo: (x) => x.nombre },
+              { titulo: "Insumos (compras)", items: insumosComprasRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: insumosApi, campo: (x) => `${x.nombre} — ${fmt(x.litros, 1)} ${abrevUnidad(x.unidad)}` },
+              { titulo: "Gastos", items: gastosRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: gastosApiGlobal, campo: (x) => `${x.origen} — ${fmtUSD(x.monto)}` },
+              { titulo: "Ventas", items: ventasRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: ventasApiGlobal, campo: (x) => `${x.origen} — ${fmt(x.toneladas, 2)} tn` },
+              { titulo: "Remitos", items: remitosRaw.filter((x) => x.eliminado && esDeMiWorkspace(x)), api: remitosApiGlobal, campo: (x) => `Remito ${x.remito}` },
             ]}
             puedeEditar={puedeEditar}
           />
@@ -605,7 +609,7 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen, puedeEditar = tru
 /* ------------------------------------------------------------------ */
 /*  Detalle de un cultivo: Resumen / Gastos / Ventas / Remitos          */
 /* ------------------------------------------------------------------ */
-function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsumos, insumosCompras, gastosTodos, campos, puedeEditar = true }) {
+function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsumos, insumosCompras, gastosTodos, campos, puedeEditar = true, miWorkspaceId }) {
   const [tab, setTab] = useState("resumen");
   const [gastos, setGastos] = useState([]);
   const [ventas, setVentas] = useState([]);
@@ -622,16 +626,16 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
   }, [cultivo.id]);
 
   const gastosApi = {
-    add: (d) => addDoc(collection(db, "gastos"), { ...d, creadoPor: user.email, creadoEn: new Date().toISOString() }),
+    add: (d) => addDoc(collection(db, "gastos"), { ...d, workspaceId: miWorkspaceId, creadoPor: user.email, creadoEn: new Date().toISOString() }),
     update: (id, d) => updateDoc(doc(db, "gastos", id), { ...d, modificadoPor: user.email, modificadoEn: new Date().toISOString() }),
     remove: (id) => updateDoc(doc(db, "gastos", id), { eliminado: true, eliminadoEn: new Date().toISOString(), eliminadoPor: user.email }),
   };
   const ventasApi = {
-    add: (d) => addDoc(collection(db, "ventas"), { ...d, creadoPor: user.email, creadoEn: new Date().toISOString() }),
+    add: (d) => addDoc(collection(db, "ventas"), { ...d, workspaceId: miWorkspaceId, creadoPor: user.email, creadoEn: new Date().toISOString() }),
     remove: (id) => updateDoc(doc(db, "ventas", id), { eliminado: true, eliminadoEn: new Date().toISOString(), eliminadoPor: user.email }),
   };
   const remitosApi = {
-    add: (d) => addDoc(collection(db, "remitos"), { ...d, creadoPor: user.email, creadoEn: new Date().toISOString() }),
+    add: (d) => addDoc(collection(db, "remitos"), { ...d, workspaceId: miWorkspaceId, creadoPor: user.email, creadoEn: new Date().toISOString() }),
     remove: (id) => updateDoc(doc(db, "remitos", id), { eliminado: true, eliminadoEn: new Date().toISOString(), eliminadoPor: user.email }),
   };
 
@@ -1574,34 +1578,45 @@ function RemitosTab({ cultivo, remitos, api, lotes, campos = [], totalToneladasV
 function UsuariosView({ usuarios, miEmail }) {
   const [email, setEmail] = useState("");
   const [rol, setRol] = useState("lectura");
+  const [workspaceId, setWorkspaceId] = useState("");
+  const [editandoWorkspace, setEditandoWorkspace] = useState(null);
+  const [workspaceEditado, setWorkspaceEditado] = useState("");
 
   const agregar = async () => {
     const e = email.trim().toLowerCase();
     if (!e || !e.includes("@")) { alert("Ingresá un email válido."); return; }
     if (e === miEmail.toLowerCase()) { alert("No podés cambiarte el rol a vos mismo desde acá (para evitar quedarte afuera por error)."); return; }
-    await setDoc(doc(db, "usuarios", e), { email: e, rol });
-    setEmail("");
+    await setDoc(doc(db, "usuarios", e), { email: e, rol, workspaceId: workspaceId.trim() || "default" });
+    setEmail(""); setWorkspaceId("");
   };
 
   const cambiarRol = async (id, nuevoRol) => {
     if (id === miEmail.toLowerCase()) { alert("No podés cambiarte el rol a vos mismo desde acá."); return; }
-    await setDoc(doc(db, "usuarios", id), { email: id, rol: nuevoRol });
+    const actual = usuarios.find((u) => u.id === id);
+    await setDoc(doc(db, "usuarios", id), { email: id, rol: nuevoRol, workspaceId: actual?.workspaceId || "default" });
+  };
+
+  const guardarWorkspace = async (id) => {
+    if (id === miEmail.toLowerCase()) { alert("No podés cambiarte tu propio espacio de trabajo desde acá."); return; }
+    const actual = usuarios.find((u) => u.id === id);
+    await setDoc(doc(db, "usuarios", id), { email: id, rol: actual?.rol || "lectura", workspaceId: workspaceEditado.trim() || "default" });
+    setEditandoWorkspace(null);
   };
 
   const quitar = async (id) => {
     if (id === miEmail.toLowerCase()) { alert("No podés quitarte a vos mismo de la lista."); return; }
-    if (confirm("Este usuario va a quedar como editor normal (rol por defecto). ¿Continuar?")) await deleteDoc(doc(db, "usuarios", id));
+    if (confirm("Este usuario va a quedar como editor normal, en el espacio de trabajo compartido. ¿Continuar?")) await deleteDoc(doc(db, "usuarios", id));
   };
 
   return (
     <div className="space-y-5">
       <div>
         <div className="cc-h" style={{ fontSize: 20, fontWeight: 600 }}>Usuarios</div>
-        <div style={{ fontSize: 12.5, color: "#8A8570" }}>Administrá quién puede editar datos y quién solo puede verlos. Si un email no aparece en esta lista, tiene acceso completo de edición por defecto.</div>
+        <div style={{ fontSize: 12.5, color: "#8A8570" }}>Administrá quién puede editar datos y en qué espacio de trabajo entra cada uno. Si un email no aparece en esta lista, tiene acceso completo de edición en el espacio compartido por defecto.</div>
       </div>
 
       <div className="cc-card p-4">
-        <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Asignar rol a un usuario</div>
+        <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>Asignar rol y espacio a un usuario</div>
         <div className="flex gap-3 flex-wrap items-end">
           <div style={{ flex: 1, minWidth: 200 }}>
             <label style={{ fontSize: 12, color: "#8A8570" }}>Email del usuario</label>
@@ -1614,17 +1629,24 @@ function UsuariosView({ usuarios, miEmail }) {
               <option value="admin">Editor / Admin</option>
             </select>
           </div>
+          <div style={{ width: 220 }}>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>Espacio de trabajo (opcional)</label>
+            <input className="cc-input" value={workspaceId} onChange={(e) => setWorkspaceId(e.target.value)} placeholder="Dejalo vacío para el compartido" />
+          </div>
           <button className="cc-btn cc-btn-primary" onClick={agregar}><Plus size={18} /> Guardar</button>
         </div>
-        <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 8 }}>La persona tiene que crear su cuenta con este mismo email desde la pantalla de ingreso. El rol se aplica apenas inicia sesión.</div>
+        <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 8 }}>
+          La persona tiene que crear su cuenta con este mismo email desde la pantalla de ingreso. Si dejás el "Espacio de trabajo" vacío, comparte campañas, cultivos y todo lo demás con el resto del equipo (como hasta ahora).
+          Si le ponés un nombre propio (ej: <code>juan-privado</code>), esa persona va a ver una app completamente vacía y separada — sus campañas, gastos y todo lo que cargue no lo va a ver nadie más, ni vos, salvo que compartas ese mismo nombre de espacio con otro usuario.
+        </div>
       </div>
 
       {usuarios.length === 0 ? (
-        <EmptyState icon={Users} title="Todos tienen acceso completo" text="Todavía no le asignaste rol de solo lectura a nadie." />
+        <EmptyState icon={Users} title="Todos comparten el mismo espacio" text="Todavía no le asignaste un rol o espacio de trabajo distinto a nadie." />
       ) : (
         <div className="cc-card overflow-hidden">
           <table className="w-full" style={{ fontSize: 13 }}>
-            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Email</th><th className="px-3 py-2">Rol</th><th className="px-3 py-2"></th></tr></thead>
+            <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Email</th><th className="px-3 py-2">Rol</th><th className="px-3 py-2">Espacio de trabajo</th><th className="px-3 py-2"></th></tr></thead>
             <tbody>
               {usuarios.map((u) => (
                 <tr key={u.id} style={{ borderTop: "1px solid var(--line)" }}>
@@ -1634,6 +1656,23 @@ function UsuariosView({ usuarios, miEmail }) {
                       <option value="lectura">Solo lectura</option>
                       <option value="admin">Editor / Admin</option>
                     </select>
+                  </td>
+                  <td className="px-3 py-2">
+                    {editandoWorkspace === u.id ? (
+                      <div className="flex gap-1 items-center">
+                        <input className="cc-input" style={{ padding: "5px 8px", fontSize: 12.5, width: 160 }} value={workspaceEditado} onChange={(e) => setWorkspaceEditado(e.target.value)} placeholder="default" />
+                        <button onClick={() => guardarWorkspace(u.id)} title="Guardar"><CheckCircle2 size={17} color="var(--soil-light)" /></button>
+                        <button onClick={() => setEditandoWorkspace(null)} title="Cancelar"><X size={17} color="var(--rust)" /></button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { if (u.id !== miEmail.toLowerCase()) { setEditandoWorkspace(u.id); setWorkspaceEditado(u.workspaceId && u.workspaceId !== "default" ? u.workspaceId : ""); } }}
+                        style={{ color: u.workspaceId && u.workspaceId !== "default" ? "var(--frost)" : "#8A8570", fontWeight: u.workspaceId && u.workspaceId !== "default" ? 700 : 400 }}
+                        disabled={u.id === miEmail.toLowerCase()}
+                      >
+                        {u.workspaceId && u.workspaceId !== "default" ? u.workspaceId : "Compartido (default)"}
+                      </button>
+                    )}
                   </td>
                   <td className="px-3 py-2 text-right">{u.id !== miEmail.toLowerCase() && <button onClick={() => quitar(u.id)}><Trash2 size={16} color="var(--rust)" /></button>}</td>
                 </tr>
