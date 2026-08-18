@@ -1,7 +1,14 @@
 import React, { useState, useEffect, useRef } from "react";
 import { auth, db, storage } from "./firebase";
 import {
-  onAuthStateChanged, signIE
+  onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
+  signOut, sendPasswordResetEmail,
+} from "firebase/auth";
+import {
+  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, where, setDoc,
+} from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+import * as XLSX from "xlsx";
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
