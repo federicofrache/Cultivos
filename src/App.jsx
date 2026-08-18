@@ -1,14 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { auth, db, storage } from "./firebase";
 import {
-  onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword,
-  signOut, sendPasswordResetEmail,
-} from "firebase/auth";
-import {
-  collection, onSnapshot, addDoc, updateDoc, deleteDoc, doc, query, where, setDoc,
-} from "firebase/firestore";
-import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
-import * as XLSX from "xlsx";
+  onAuthStateChanged, signIE
 import {
   BarChart, Bar, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
@@ -1012,6 +1005,7 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
   const recRef = useRef(null);
   const set = (k, v) => setForm({ ...form, [k]: v });
   const [busqueda, setBusqueda] = useState("");
+  const [filtroCategoria, setFiltroCategoria] = useState("todas");
   const [mensaje, setMensaje] = useState("");
   const avisar = (texto) => { setMensaje(texto); setTimeout(() => setMensaje(""), 2500); };
   const [moneda, setMoneda] = useState("USD");
@@ -1357,6 +1351,13 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
           <div style={{ maxWidth: 320, flex: 1 }}>
             <input className="cc-input" value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar por origen, detalle o usuario..." />
           </div>
+          <div style={{ width: 190 }}>
+            <select className="cc-input" value={filtroCategoria} onChange={(e) => setFiltroCategoria(e.target.value)}>
+              <option value="todas">Todas las categorías</option>
+              <option value="Insumo">Insumo</option>
+              {CATEGORIAS_GASTO.map((c) => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
           <button className="cc-btn cc-btn-ghost" onClick={() => exportarExcel(`gastos_${cultivo.nombre}`, [{ nombre: "Gastos", filas: gastos.map((g) => ({ Fecha: g.fecha, Categoría: g.categoriaGasto || (g.insumoNombre ? "Insumo" : "Otro"), Origen: g.origen, Socio: g.socio || "", Detalle: g.detalle, Insumo: g.insumoNombre || "", "Litros usados": g.litrosUsados || "", "U$S/ha": g.valorPorHectarea || "", Usuario: g.usuario, Monto: g.monto })) }])}>
             <Download size={17} /> Exportar Excel
           </button>
@@ -1365,18 +1366,30 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
 
       {gastos.length === 0 ? <EmptyState icon={Receipt} title="Sin gastos cargados" text="Cargá el primer gasto de este cultivo, escrito, por voz o desde una foto de factura." /> : (
         <div className="cc-card overflow-hidden">
+          <div className="flex items-center gap-4 px-3 py-2" style={{ fontSize: 11.5, color: "#8A8570", borderBottom: "1px solid var(--line)" }}>
+            <span className="flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: "50%", background: "#FDF3E0", border: "1px solid var(--gold)", display: "inline-block" }} /> Programado (fecha futura)</span>
+            <span className="flex items-center gap-1"><span style={{ width: 10, height: 10, borderRadius: "50%", background: "#fff", border: "1px solid var(--line)", display: "inline-block" }} /> Realizado</span>
+          </div>
           <table className="w-full" style={{ fontSize: 13 }}>
             <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Categoría</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">Socio</th><th className="px-3 py-2">Detalle</th><th className="px-3 py-2">Usuario</th><th className="px-3 py-2 text-right">Monto</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
             <tbody>
               {[...gastos]
                 .filter((g) => {
                   const q = busqueda.trim().toLowerCase();
+                  const catG = g.categoriaGasto || (g.insumoNombre ? "Insumo" : "Otro");
+                  if (filtroCategoria !== "todas" && catG !== filtroCategoria) return false;
                   if (!q) return true;
                   return [g.origen, g.detalle, g.usuario].some((v) => (v || "").toLowerCase().includes(q));
                 })
-                .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((g) => (
-                <tr key={g.id} style={{ borderTop: "1px solid var(--line)", background: editId === g.id ? "#FDF3E0" : "transparent" }}>
-                  <td className="px-3 py-2 cc-mono">{g.fecha}</td>
+                .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((g) => {
+                const hoyStr = new Date().toISOString().slice(0, 10);
+                const esProgramado = g.fecha && g.fecha > hoyStr;
+                return (
+                <tr key={g.id} style={{ borderTop: "1px solid var(--line)", background: editId === g.id ? "#FDF3E0" : esProgramado ? "#FDF8EC" : "transparent" }}>
+                  <td className="px-3 py-2 cc-mono" style={{ color: esProgramado ? "#B8860B" : "var(--ink)", fontWeight: esProgramado ? 700 : 400 }}>
+                    {g.fecha}
+                    {esProgramado && <div style={{ fontSize: 10, fontWeight: 600, color: "var(--gold)" }}>Programado</div>}
+                  </td>
                   <td className="px-3 py-2">
                     <span className="cc-chip" style={{ background: (GASTO_CAT_COLOR[g.categoriaGasto] || GASTO_CAT_COLOR.Otro) + "22", color: GASTO_CAT_COLOR[g.categoriaGasto] || GASTO_CAT_COLOR.Otro }}>
                       {g.categoriaGasto || (g.insumoNombre ? "Insumo" : "Otro")}
@@ -1409,7 +1422,8 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
                   <td className="px-3 py-2 text-right">{puedeEditar && <button onClick={() => editar(g)} title="Editar"><Pencil size={16} color="var(--frost)" /></button>}</td>
                   <td className="px-3 py-2 text-right">{puedeEditar && <button onClick={() => eliminar(g.id)} title="Eliminar"><Trash2 size={16} color="var(--rust)" /></button>}</td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
             <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}><td className="px-3 py-2" colSpan={6}>Total</td><td className="px-3 py-2 text-right cc-mono">{fmtUSD(gastos.reduce((s, g) => s + Number(g.monto || 0), 0))}</td><td colSpan={4}></td></tr></tfoot>
           </table>
@@ -2176,11 +2190,17 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
     const totalIngresos = ventasCultivo.reduce((s, v) => s + Number(v.toneladas || 0) * Number(v.dolaresPorTonelada || 0), 0);
     const totalTon = remitosCultivo.reduce((s, r) => s + Number(r.kgSL || 0), 0) / 1000;
     const superficie = lotes.filter((l) => (c.loteIds || []).includes(l.id)).reduce((s, l) => s + Number(l.hectareas || 0), 0);
+    const porSocio = {};
+    gastosCultivo.forEach((g) => {
+      const s = g.socio && g.socio.trim() ? g.socio.trim() : "Sin asignar";
+      porSocio[s] = (porSocio[s] || 0) + Number(g.monto || 0);
+    });
     return {
       cultivoId: c.id, campaniaId: c.campaniaId, cultivoNombre: c.nombre, tipoCultivo: c.tipo || c.nombre, categoria: c.categoria,
       campaniaNombre: campania ? (campania.nombre || campania.anio) : "—", anio: campania?.anio || 0,
       superficie, totalGastos, totalIngresos, margen: totalIngresos - totalGastos, rendimiento: superficie && totalTon ? totalTon / superficie : null,
       costoPorHa: superficie ? totalGastos / superficie : null, margenPorHa: superficie ? (totalIngresos - totalGastos) / superficie : null,
+      porSocio,
     };
   }).sort((a, b) => b.anio - a.anio || a.cultivoNombre.localeCompare(b.cultivoNombre));
 
@@ -2205,8 +2225,10 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
   });
   const totalAportes = Object.values(aportesSocio).reduce((s, v) => s + v, 0);
 
+  const sociosGlobalExport = Array.from(new Set(gastosActivos.map((g) => (g.socio && g.socio.trim()) ? g.socio.trim() : "Sin asignar")));
   const exportar = () => exportarExcel("resumen_general_campo_costo", [
     { nombre: "Resumen", filas: filas.map((f) => ({ Campaña: f.campaniaNombre, Cultivo: f.cultivoNombre, Categoría: f.categoria, "Superficie (ha)": f.superficie, "Rinde (tn/ha)": f.rendimiento, "Total gastos": f.totalGastos, "Total ingresos": f.totalIngresos, Margen: f.margen, "Gasto/ha": f.costoPorHa, "Margen/ha": f.margenPorHa })) },
+    { nombre: "Aporte por socio por cultivo", filas: filas.map((f) => { const fila = { Campaña: f.campaniaNombre, Cultivo: f.cultivoNombre }; sociosGlobalExport.forEach((s) => { fila[s] = f.porSocio[s] || 0; }); fila["Total"] = f.totalGastos; return fila; }) },
     { nombre: "Aporte por socio", filas: Object.entries(aportesSocio).map(([socio, monto]) => ({ Socio: socio, Monto: monto, "% del total": totalAportes ? (monto / totalAportes) * 100 : 0 })) },
   ]);
 
@@ -2341,9 +2363,49 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
         </div>
       )}
 
+      {(() => {
+        const sociosGlobal = Array.from(new Set(gastosActivos.map((g) => (g.socio && g.socio.trim()) ? g.socio.trim() : "Sin asignar")))
+          .sort((a, b) => (a === "Sin asignar" ? 1 : b === "Sin asignar" ? -1 : a.localeCompare(b)));
+        if (!sociosGlobal.length) return null;
+        return (
+          <div>
+            <div className="cc-h" style={{ fontSize: 17, fontWeight: 600, marginBottom: 4 }}>Aporte por socio, por cultivo</div>
+            <div style={{ fontSize: 12.5, color: "#8A8570", marginBottom: 10 }}>Cuánto puso cada socio, discriminado campaña por campaña.</div>
+            <div className="cc-card overflow-hidden">
+              <table className="w-full" style={{ fontSize: 13 }}>
+                <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}>
+                  <th className="px-3 py-2">Campaña</th><th className="px-3 py-2">Cultivo</th>
+                  {sociosGlobal.map((s) => <th key={s} className="px-3 py-2 text-right">{s}</th>)}
+                  <th className="px-3 py-2 text-right">Total</th>
+                </tr></thead>
+                <tbody>
+                  {filas.filter((f) => f.totalGastos > 0).map((f) => (
+                    <tr key={f.cultivoId} style={{ borderTop: "1px solid var(--line)", cursor: "pointer" }} onClick={() => onOpenCultivo(f.cultivoId, f.campaniaId)}>
+                      <td className="px-3 py-2">{f.campaniaNombre}</td>
+                      <td className="px-3 py-2">{f.cultivoNombre}</td>
+                      {sociosGlobal.map((s) => (
+                        <td key={s} className="px-3 py-2 text-right cc-mono" style={{ color: f.porSocio[s] ? "var(--ink)" : "#C9C3AC" }}>
+                          {f.porSocio[s] ? fmtUSD(f.porSocio[s]) : "-"}
+                        </td>
+                      ))}
+                      <td className="px-3 py-2 text-right cc-mono" style={{ fontWeight: 700 }}>{fmtUSD(f.totalGastos)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}>
+                  <td className="px-3 py-2" colSpan={2}>Total</td>
+                  {sociosGlobal.map((s) => <td key={s} className="px-3 py-2 text-right cc-mono">{fmtUSD(aportesSocio[s] || 0)}</td>)}
+                  <td className="px-3 py-2 text-right cc-mono">{fmtUSD(totalGastosGeneral)}</td>
+                </tr></tfoot>
+              </table>
+            </div>
+          </div>
+        );
+      })()}
+
       {totalAportes > 0 && (
         <div>
-          <div className="cc-h" style={{ fontSize: 17, fontWeight: 600, marginBottom: 10 }}>Aporte por socio (todo junto)</div>
+          <div className="cc-h" style={{ fontSize: 17, fontWeight: 600, marginBottom: 10 }}>Aporte por socio (todo junto, incluye insumos comprados sin consumir)</div>
           <div className="cc-card p-4 space-y-3">
             {Object.entries(aportesSocio).sort((a, b) => b[1] - a[1]).map(([socio, monto]) => {
               const pct = totalAportes ? (monto / totalAportes) * 100 : 0;
