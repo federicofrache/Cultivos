@@ -330,6 +330,27 @@ export default function App() {
     }));
   })();
 
+  // Cuando se edita o borra una compra, los gastos que ya consumieron de ese insumo
+  // (en ese mismo punto de stock) pueden haber quedado con un costo desactualizado.
+  // Esto vuelve a recorrer la cadena FIFO en orden y corrige el monto de cada gasto afectado.
+  const recalcularConsumosDeInsumo = async (nombre, puntoStockId) => {
+    const comprasRelevantes = insumosCompras.filter((c) => c.nombre === nombre && (c.puntoStockId || null) === (puntoStockId || null));
+    const consumos = gastosTodos
+      .filter((g) => g.insumoNombre === nombre && (g.puntoStockId || null) === (puntoStockId || null))
+      .sort((a, b) => (a.fecha || "").localeCompare(b.fecha || "") || String(a.id).localeCompare(String(b.id)));
+    let consumidoAcumulado = 0;
+    for (const g of consumos) {
+      const litrosUsados = Number(g.litrosUsados || 0);
+      const fifo = costoFIFO(comprasRelevantes, consumidoAcumulado, litrosUsados);
+      const cambioMonto = Math.abs(fifo.costoTotal - Number(g.monto || 0)) > 0.005;
+      const cambioCosto = Math.abs(fifo.costoPromedioEfectivo - Number(g.costoPorLitro || 0)) > 0.005;
+      if (cambioMonto || cambioCosto) {
+        await gastosApiGlobal.update(g.id, { monto: fifo.costoTotal, costoPorLitro: fifo.costoPromedioEfectivo });
+      }
+      consumidoAcumulado += litrosUsados;
+    }
+  };
+
   const campaniaActual = campanias.find((c) => c.id === nav.campaniaId);
   const cultivoActual = cultivos.find((c) => c.id === nav.cultivoId);
   const campoActual = nav.campoId === "__sin_campo__" ? { id: "__sin_campo__", nombre: "Sin campo asignado" } : campos.find((c) => c.id === nav.campoId);
@@ -421,7 +442,7 @@ export default function App() {
           <LotesView campo={campoActual} lotes={campoActual.id === "__sin_campo__" ? lotes.filter((l) => !l.campoId) : lotes.filter((l) => l.campoId === campoActual.id)} api={lotesApi} sinCampo={campoActual.id === "__sin_campo__"} campos={campos} puedeEditar={puedeEditar} />
         )}
 
-        {nav.view === "insumos" && <InsumosView compras={insumosCompras} api={insumosApi} stockInsumos={stockInsumos} user={user} puedeEditar={puedeEditar} puntosStock={puntosStock} puntosStockApi={puntosStockApi} />}
+        {nav.view === "insumos" && <InsumosView compras={insumosCompras} api={insumosApi} stockInsumos={stockInsumos} user={user} puedeEditar={puedeEditar} puntosStock={puntosStock} puntosStockApi={puntosStockApi} recalcularConsumos={recalcularConsumosDeInsumo} />}
 
         {nav.view === "resumen_general" && (
           <ResumenGeneralView campanias={campanias} cultivos={cultivos} gastos={gastosTodos} ventas={ventasTodas} remitos={remitosTodos} lotes={lotes} insumosCompras={insumosCompras}
@@ -1884,7 +1905,7 @@ function LotesView({ campo, lotes, api, sinCampo, campos = [], puedeEditar = tru
 /* ------------------------------------------------------------------ */
 const emptyItemInsumo = () => ({ nombre: "", litros: "", unidad: "Litros", precioUnitario: "" });
 
-function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true, puntosStock, puntosStockApi }) {
+function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true, puntosStock, puntosStockApi, recalcularConsumos }) {
   const [fecha, setFecha] = useState("");
   const [origen, setOrigen] = useState("");
   const [socio, setSocio] = useState("");
@@ -1902,6 +1923,9 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true, pun
   const [busqueda, setBusqueda] = useState("");
   const [nuevoPunto, setNuevoPunto] = useState("");
   const [gestionandoPuntos, setGestionandoPuntos] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [editOriginal, setEditOriginal] = useState(null); // { nombre, puntoStockId } de antes de editar, para recalcular esa cadena también
+  const [recalculando, setRecalculando] = useState(false);
 
   const origenesSugeridos = Array.from(new Set(compras.map((c) => c.origen).filter(Boolean)));
   const nombresSugeridos = Array.from(new Set(compras.map((c) => c.nombre).filter(Boolean)));
@@ -1958,17 +1982,64 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true, pun
       setSubiendo(false);
     }
     const puntoNombre = puntosStock.find((p) => p.id === puntoStockId)?.nombre || "";
-    await Promise.all(validos.map((it) => api.add({
-      fecha, origen, nombre: it.nombre, litros: Number(it.litros), unidad: it.unidad || "Litros",
-      precio: Number(it.litros) * Number(it.precioUnitario), precioUnitario: Number(it.precioUnitario),
-      facturaUrl, facturaNombre, numeroFactura: numeroFactura || "", usuario: user.email, socio: socio || "",
-      puntoStockId: puntoStockId || null, puntoStockNombre: puntoNombre || "Sin punto asignado",
-    })));
-    setFecha(""); setOrigen(""); setSocio(""); setNumeroFactura(""); setItems([emptyItemInsumo()]); setArchivo(null); setPreview(null); setImgB64(null);
-    setMensaje("Compra guardada ✓"); setTimeout(() => setMensaje(""), 2500);
+
+    if (editId) {
+      // Edición: siempre es un solo insumo (cada compra es un documento individual)
+      const it = validos[0];
+      const datos = {
+        fecha, origen, nombre: it.nombre, litros: Number(it.litros), unidad: it.unidad || "Litros",
+        precio: Number(it.litros) * Number(it.precioUnitario), precioUnitario: Number(it.precioUnitario),
+        numeroFactura: numeroFactura || "", socio: socio || "",
+        puntoStockId: puntoStockId || null, puntoStockNombre: puntoNombre || "Sin punto asignado",
+      };
+      if (archivo) { datos.facturaUrl = facturaUrl; datos.facturaNombre = facturaNombre; }
+      await api.update(editId, datos);
+      setRecalculando(true);
+      try {
+        // Recalcula la cadena de consumos del insumo/punto nuevo, y también la del insumo/punto
+        // original si cambiaste el nombre o el punto de stock al editar
+        await recalcularConsumos(it.nombre, puntoStockId || null);
+        if (editOriginal && (editOriginal.nombre !== it.nombre || (editOriginal.puntoStockId || null) !== (puntoStockId || null))) {
+          await recalcularConsumos(editOriginal.nombre, editOriginal.puntoStockId || null);
+        }
+      } finally { setRecalculando(false); }
+      setMensaje("Compra actualizada ✓ (gastos recalculados)"); setTimeout(() => setMensaje(""), 3500);
+      setEditId(null); setEditOriginal(null);
+    } else {
+      await Promise.all(validos.map((it) => api.add({
+        fecha, origen, nombre: it.nombre, litros: Number(it.litros), unidad: it.unidad || "Litros",
+        precio: Number(it.litros) * Number(it.precioUnitario), precioUnitario: Number(it.precioUnitario),
+        facturaUrl, facturaNombre, numeroFactura: numeroFactura || "", usuario: user.email, socio: socio || "",
+        puntoStockId: puntoStockId || null, puntoStockNombre: puntoNombre || "Sin punto asignado",
+      })));
+      // Si la fecha de esta compra nueva es anterior a consumos ya cargados, el orden FIFO puede cambiar
+      setRecalculando(true);
+      try { await Promise.all(validos.map((it) => recalcularConsumos(it.nombre, puntoStockId || null))); } finally { setRecalculando(false); }
+      setMensaje("Compra guardada ✓"); setTimeout(() => setMensaje(""), 2500);
+    }
+    setFecha(""); setOrigen(""); setSocio(""); setNumeroFactura(""); setPuntoStockId(""); setItems([emptyItemInsumo()]); setArchivo(null); setPreview(null); setImgB64(null);
   };
 
-  const eliminar = (id) => { if (confirm("Esta compra se moverá a la papelera (se descontará del stock hasta que la restaures). ¿Continuar?")) api.remove(id); };
+  const editar = (c) => {
+    setEditId(c.id);
+    setEditOriginal({ nombre: c.nombre, puntoStockId: c.puntoStockId || null });
+    setFecha(c.fecha || ""); setOrigen(c.origen || ""); setSocio(c.socio || ""); setNumeroFactura(c.numeroFactura || "");
+    setPuntoStockId(c.puntoStockId || "");
+    setItems([{ nombre: c.nombre, litros: String(c.litros ?? ""), unidad: c.unidad || "Litros", precioUnitario: String(c.precioUnitario ?? (c.litros ? c.precio / c.litros : "")) }]);
+    setArchivo(null); setPreview(null); setImgB64(null); setError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const cancelarEdicion = () => {
+    setEditId(null); setEditOriginal(null);
+    setFecha(""); setOrigen(""); setSocio(""); setNumeroFactura(""); setPuntoStockId(""); setItems([emptyItemInsumo()]); setArchivo(null); setPreview(null); setImgB64(null);
+  };
+
+  const eliminar = async (id) => {
+    if (!confirm("Esta compra se moverá a la papelera (se descontará del stock hasta que la restaures). ¿Continuar?")) return;
+    const c = compras.find((x) => x.id === id);
+    await api.remove(id);
+    if (c) { setRecalculando(true); try { await recalcularConsumos(c.nombre, c.puntoStockId || null); } finally { setRecalculando(false); } }
+  };
 
   return (
     <div className="space-y-6">
@@ -2064,11 +2135,21 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true, pun
             })}
             <datalist id="nombres-insumos">{nombresSugeridos.map((n) => <option key={n} value={n} />)}</datalist>
           </div>
-          <button className="cc-btn cc-btn-ghost mt-2" onClick={agregarItem}><Plus size={17} /> Agregar otro insumo a esta factura</button>
+          {!editId && <button className="cc-btn cc-btn-ghost mt-2" onClick={agregarItem}><Plus size={17} /> Agregar otro insumo a esta factura</button>}
         </div>
 
-        <div className="flex items-center gap-3">
-          <button className="cc-btn cc-btn-primary" onClick={guardar} disabled={subiendo}>{subiendo ? <Loader2 size={18} className="animate-spin" /> : <Plus size={18} />} Guardar compra</button>
+        {editId && (
+          <div className="flex items-center gap-2" style={{ background: "#FDF3E0", border: "1px solid var(--gold)", borderRadius: 8, padding: "6px 10px", fontSize: 12.5, color: "#7A5A1E" }}>
+            <Pencil size={16} /> Editando una compra ya guardada. Al guardar, se recalculan los gastos de insumo que ya se hayan cargado.
+          </div>
+        )}
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <button className="cc-btn cc-btn-primary" onClick={guardar} disabled={subiendo || recalculando}>
+            {subiendo || recalculando ? <Loader2 size={18} className="animate-spin" /> : editId ? <Pencil size={18} /> : <Plus size={18} />}
+            {recalculando ? "Recalculando gastos..." : editId ? "Guardar cambios" : "Guardar compra"}
+          </button>
+          {editId && <button className="cc-btn cc-btn-ghost" onClick={cancelarEdicion}><X size={18} /> Cancelar</button>}
           {mensaje && <span style={{ color: "var(--soil-light)", fontWeight: 700, fontSize: 13.5 }}>{mensaje}</span>}
         </div>
       </div>
@@ -2121,7 +2202,7 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true, pun
         {compras.length === 0 ? <EmptyState icon={Receipt} title="Sin compras registradas" text="Registrá tu primera compra de insumos arriba." /> : (
           <div className="cc-card overflow-hidden">
             <table className="w-full" style={{ fontSize: 12.5 }}>
-              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">N° factura</th><th className="px-3 py-2">Socio</th><th className="px-3 py-2">Punto de stock</th><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Litros</th><th className="px-3 py-2 text-right">Precio</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
+              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}><th className="px-3 py-2">Fecha</th><th className="px-3 py-2">Origen</th><th className="px-3 py-2">N° factura</th><th className="px-3 py-2">Socio</th><th className="px-3 py-2">Punto de stock</th><th className="px-3 py-2">Insumo</th><th className="px-3 py-2 text-right">Litros</th><th className="px-3 py-2 text-right">Precio</th><th className="px-3 py-2"></th><th className="px-3 py-2"></th><th className="px-3 py-2"></th></tr></thead>
               <tbody>
                 {[...compras]
                   .filter((c) => {
@@ -2130,7 +2211,7 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true, pun
                     return [c.nombre, c.origen, c.numeroFactura].some((v) => (v || "").toLowerCase().includes(q));
                   })
                   .sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((c) => (
-                  <tr key={c.id} style={{ borderTop: "1px solid var(--line)" }}>
+                  <tr key={c.id} style={{ borderTop: "1px solid var(--line)", background: editId === c.id ? "#FDF3E0" : "transparent" }}>
                     <td className="px-3 py-2 cc-mono">{c.fecha}</td>
                     <td className="px-3 py-2">{c.origen}</td>
                     <td className="px-3 py-2 cc-mono" style={{ color: "#5A5647" }}>{c.numeroFactura || "-"}</td>
@@ -2140,7 +2221,8 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true, pun
                     <td className="px-3 py-2 text-right cc-mono">{fmt(c.litros, 1)} {abrevUnidad(c.unidad)}</td>
                     <td className="px-3 py-2 text-right cc-mono">{fmtUSD(c.precio)}</td>
                     <td className="px-3 py-2">{c.facturaUrl && <a href={c.facturaUrl} target="_blank" rel="noreferrer"><FileText size={17} color="var(--frost)" /></a>}</td>
-                    <td className="px-3 py-2 text-right">{puedeEditar && <button onClick={() => eliminar(c.id)}><Trash2 size={16} color="var(--rust)" /></button>}</td>
+                    <td className="px-3 py-2 text-right">{puedeEditar && <button onClick={() => editar(c)} title="Editar"><Pencil size={16} color="var(--frost)" /></button>}</td>
+                    <td className="px-3 py-2 text-right">{puedeEditar && <button onClick={() => eliminar(c.id)} title="Eliminar"><Trash2 size={16} color="var(--rust)" /></button>}</td>
                   </tr>
                 ))}
               </tbody>
