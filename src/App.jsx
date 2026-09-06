@@ -1286,7 +1286,15 @@ function GastosTab({ cultivo, gastos, api, user, stockInsumos, insumosCompras, g
               </select>
               {stockInsumos.length === 0 && <div style={{ fontSize: 11.5, color: "#8A8570" }}>No hay insumos cargados todavía — cargalos desde "Insumos" en el menú superior.</div>}
             </div>
-            <div><label style={{ fontSize: 12, color: "#8A8570" }}>Cantidad usada{insumoElegido ? ` (${abrevUnidad(insumoElegido.unidad)})` : ""}</label><input className="cc-input" type="number" value={litrosUsados} onChange={(e) => setLitrosUsados(e.target.value)} /></div>
+            <div>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Cantidad usada{insumoElegido ? ` (${abrevUnidad(insumoElegido.unidad)})` : ""}</label>
+              <input className="cc-input" type="number" value={litrosUsados} onChange={(e) => setLitrosUsados(e.target.value)} />
+              {insumoElegido && (
+                <div style={{ fontSize: 11.5, marginTop: 3, color: insumoElegido.disponible <= 0 ? "var(--rust)" : "#8A8570" }}>
+                  Disponible: <b>{fmt(insumoElegido.disponible, 1)} {abrevUnidad(insumoElegido.unidad)}</b>
+                </div>
+              )}
+            </div>
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Fecha</label><input className="cc-input" type="date" value={form.fecha} onChange={(e) => set("fecha", e.target.value)} /></div>
             <div><label style={{ fontSize: 12, color: "#8A8570" }}>Costo estimado (FIFO)</label><input className="cc-input" value={`U$S ${fmt(montoCalculado, 2)}`} disabled /></div>
             <div>
