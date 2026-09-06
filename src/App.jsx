@@ -2316,6 +2316,7 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
   const [cultivoId, setCultivoId] = useState("");
   const [loteIdsSel, setLoteIdsSel] = useState([]);
   const [detalle, setDetalle] = useState("");
+  const [valorLaborPorHa, setValorLaborPorHa] = useState("");
   const [fecha, setFecha] = useState("");
   const [socio, setSocio] = useState("");
   const [items, setItems] = useState([emptyItemOrden()]);
@@ -2324,6 +2325,7 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
   const [confirmandoId, setConfirmandoId] = useState(null);
 
   const cultivosDeCampania = cultivos.filter((c) => c.campaniaId === campaniaId);
+  const tiposLaborSugeridos = Array.from(new Set(ordenes.map((o) => o.detalle).filter(Boolean)));
   const cultivoSel = cultivos.find((c) => c.id === cultivoId);
   const lotesDeCultivo = cultivoSel ? lotes.filter((l) => (cultivoSel.loteIds || []).includes(l.id)) : [];
   const superficieSel = lotes.filter((l) => loteIdsSel.includes(l.id)).reduce((s, l) => s + Number(l.hectareas || 0), 0);
@@ -2364,14 +2366,17 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
         pendienteDeStock: false,
       };
     });
+    const costoLaborCalculado = valorLaborPorHa ? Number(valorLaborPorHa) * superficieSel : null;
+    const numero = Math.max(0, ...ordenes.map((o) => Number(o.numero) || 0)) + 1;
     await api.add({
-      campaniaId, cultivoId, loteIds: loteIdsSel, superficie: superficieSel, detalle: detalle.trim(), fecha, socio: socio.trim(),
+      numero, campaniaId, cultivoId, loteIds: loteIdsSel, superficie: superficieSel, detalle: detalle.trim(), fecha, socio: socio.trim(),
+      valorLaborPorHa: valorLaborPorHa ? Number(valorLaborPorHa) : null, costoLaborCalculado, laborConfirmada: false, laborGastoId: null,
       items: itemsGuardar,
     });
     setGuardando(false);
-    setCampaniaId(""); setCultivoId(""); setLoteIdsSel([]); setDetalle(""); setFecha(""); setSocio(""); setItems([emptyItemOrden()]);
+    setCampaniaId(""); setCultivoId(""); setLoteIdsSel([]); setDetalle(""); setFecha(""); setSocio(""); setItems([emptyItemOrden()]); setValorLaborPorHa("");
     setMostrandoForm(false);
-    setMensaje("Orden guardada ✓"); setTimeout(() => setMensaje(""), 2500);
+    setMensaje(`Orden N° ${numero} guardada ✓`); setTimeout(() => setMensaje(""), 2500);
   };
 
   const eliminarOrden = (id) => { if (confirm("Esta orden se moverá a la papelera. ¿Continuar?")) api.remove(id); };
@@ -2409,12 +2414,27 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
     await api.update(orden.id, { items: nuevosItems });
   };
 
+  const [confirmandoLaborId, setConfirmandoLaborId] = useState(null);
+  const confirmarLabor = async (orden) => {
+    if (!orden.valorLaborPorHa || orden.laborConfirmada) return;
+    setConfirmandoLaborId(orden.id);
+    try {
+      const nuevoGasto = await gastosApiGlobal.add({
+        cultivoId: orden.cultivoId, origen: orden.detalle || "Labor", monto: orden.costoLaborCalculado,
+        detalle: orden.detalle || "Labor realizada", fecha: orden.fecha, usuario: user.email,
+        insumoNombre: null, litrosUsados: null, categoriaGasto: "Servicio", socio: orden.socio || "",
+        modoMonto: "porHa", valorPorHectarea: orden.valorLaborPorHa, hectareasUsadas: orden.superficie, ordenTrabajoId: orden.id,
+      });
+      await api.update(orden.id, { laborConfirmada: true, laborGastoId: nuevoGasto.id });
+    } finally { setConfirmandoLaborId(null); }
+  };
+
   const exportarPDF = (orden) => {
     const campania = campanias.find((c) => c.id === orden.campaniaId);
     const cultivo = cultivos.find((c) => c.id === orden.cultivoId);
     const nombresLotes = lotes.filter((l) => (orden.loteIds || []).includes(l.id)).map((l) => l.nombre).join(", ");
     const doc = new jsPDF();
-    doc.setFontSize(16); doc.text("Orden de trabajo", 14, 18);
+    doc.setFontSize(16); doc.text(orden.numero ? `Orden de trabajo N° ${orden.numero}` : "Orden de trabajo", 14, 18);
     doc.setFontSize(10);
     let y = 28;
     const linea = (label, valor) => { doc.text(`${label}: ${valor}`, 14, y); y += 6; };
@@ -2424,6 +2444,7 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
     linea("Superficie", `${fmt(orden.superficie, 1)} ha`);
     linea("Fecha", orden.fecha || "-");
     if (orden.detalle) linea("Detalle", orden.detalle);
+    if (orden.valorLaborPorHa) linea("Costo de labor", `${fmtUSD(orden.valorLaborPorHa)}/ha (total ${fmtUSD(orden.costoLaborCalculado)})`);
     y += 2;
     autoTable(doc, {
       startY: y,
@@ -2435,7 +2456,7 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
       styles: { fontSize: 9 },
       headStyles: { fillColor: [44, 58, 36] },
     });
-    doc.save(`orden_${(cultivo?.nombre || "trabajo").replace(/\s+/g, "_")}_${orden.fecha || ""}.pdf`);
+    doc.save(`orden_${orden.numero ? "N" + orden.numero + "_" : ""}${(cultivo?.nombre || "trabajo").replace(/\s+/g, "_")}_${orden.fecha || ""}.pdf`);
   };
 
   return (
@@ -2498,9 +2519,22 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
             </div>
           )}
 
-          <div>
-            <label style={{ fontSize: 12, color: "#8A8570" }}>Detalle de la labor (opcional)</label>
-            <input className="cc-input" value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Ej: Pulverización barbecho, Siembra..." />
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(200px,1fr))" }}>
+            <div>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Tipo de labor (opcional)</label>
+              <input className="cc-input" list="tipos-labor" value={detalle} onChange={(e) => setDetalle(e.target.value)} placeholder="Ej: Pulverización barbecho, Siembra..." />
+              <datalist id="tipos-labor">{tiposLaborSugeridos.map((t) => <option key={t} value={t} />)}</datalist>
+              <div style={{ fontSize: 11, color: "#8A8570", marginTop: 3 }}>Lo que escribas queda guardado para la próxima vez.</div>
+            </div>
+            <div>
+              <label style={{ fontSize: 12, color: "#8A8570" }}>Valor de la labor (U$S/ha, opcional)</label>
+              <input className="cc-input" type="number" value={valorLaborPorHa} onChange={(e) => setValorLaborPorHa(e.target.value)} placeholder="Ej: 12" />
+              {valorLaborPorHa && superficieSel > 0 && (
+                <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 3 }}>
+                  {fmt(superficieSel, 1)} ha × {fmtUSD(Number(valorLaborPorHa))} = <b style={{ color: "var(--ink)" }}>{fmtUSD(Number(valorLaborPorHa) * superficieSel)}</b>
+                </div>
+              )}
+            </div>
           </div>
 
           <div>
@@ -2571,7 +2605,7 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
         <EmptyState icon={ClipboardList} title="Sin órdenes de trabajo" text="Creá tu primera orden para precargar una labor con su dosis y calcular los litros necesarios." />
       ) : (
         <div className="space-y-4">
-          {[...ordenes].sort((a, b) => (b.fecha || "").localeCompare(a.fecha || "")).map((orden) => {
+          {[...ordenes].sort((a, b) => (Number(b.numero) || 0) - (Number(a.numero) || 0)).map((orden) => {
             const campania = campanias.find((c) => c.id === orden.campaniaId);
             const cultivo = cultivos.find((c) => c.id === orden.cultivoId);
             const nombresLotes = lotes.filter((l) => (orden.loteIds || []).includes(l.id)).map((l) => l.nombre).join(", ");
@@ -2581,6 +2615,7 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
                 <div className="flex items-start justify-between flex-wrap gap-2 mb-3">
                   <div>
                     <div className="cc-h" style={{ fontSize: 16, fontWeight: 600 }}>
+                      {orden.numero && <span className="cc-chip" style={{ background: "#2C3A24", color: "#fff", marginRight: 8 }}>N° {orden.numero}</span>}
                       {cultivo ? cultivo.nombre : "Cultivo eliminado"} <span style={{ color: "#8A8570", fontWeight: 400, fontSize: 13 }}>· {campania ? (campania.nombre || campania.anio) : "-"}</span>
                     </div>
                     <div style={{ fontSize: 12.5, color: "#8A8570" }}>{orden.fecha} · {nombresLotes || "sin lotes"} · {fmt(orden.superficie, 1)} ha{orden.detalle ? ` · ${orden.detalle}` : ""}</div>
@@ -2605,6 +2640,21 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
                     </tbody>
                   </table>
                 </div>
+
+                {orden.valorLaborPorHa ? (
+                  <div className="flex items-center justify-between flex-wrap gap-2 mt-3 p-3" style={{ background: orden.laborConfirmada ? "#EEF4EA" : "#FDF3E0", borderRadius: 8, border: `1px solid ${orden.laborConfirmada ? "var(--soil-light)" : "var(--gold)"}` }}>
+                    <div style={{ fontSize: 12.5 }}>
+                      <b>Costo de la labor</b> ({orden.detalle || "sin detalle"}): {fmt(orden.superficie, 1)} ha × {fmtUSD(orden.valorLaborPorHa)}/ha = <b className="cc-mono">{fmtUSD(orden.costoLaborCalculado)}</b>
+                    </div>
+                    {orden.laborConfirmada ? (
+                      <span style={{ color: "var(--soil-light)", fontWeight: 700, fontSize: 12.5, display: "flex", alignItems: "center", gap: 4 }}><CheckCircle2 size={15} /> Cargado a gastos</span>
+                    ) : puedeEditar && (
+                      <button className="cc-btn cc-btn-primary" style={{ padding: "6px 12px", fontSize: 12.5 }} onClick={() => confirmarLabor(orden)} disabled={confirmandoLaborId === orden.id}>
+                        {confirmandoLaborId === orden.id ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />} Confirmar labor realizada
+                      </button>
+                    )}
+                  </div>
+                ) : null}
               </div>
             );
           })}
