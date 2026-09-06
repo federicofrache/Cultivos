@@ -2299,7 +2299,7 @@ function InsumosView({ compras, api, stockInsumos, user, puedeEditar = true, pun
 /* ------------------------------------------------------------------ */
 /*  Órdenes de trabajo                                                  */
 /* ------------------------------------------------------------------ */
-const emptyItemOrden = () => ({ insumoKey: "", dosis: "", litrosReales: "" });
+const emptyItemOrden = () => ({ modo: "stock", insumoKey: "", nombrePendiente: "", unidadPendiente: "Litros", dosis: "", litrosReales: "" });
 
 function estadoOrden(items) {
   if (!items.length) return "Sin ítems";
@@ -2343,17 +2343,25 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
   const guardar = async () => {
     if (!cultivoId || !loteIdsSel.length) { alert("Elegí un cultivo y al menos un lote."); return; }
     if (!fecha) { alert("Ingresá la fecha de la orden."); return; }
-    const validos = items.filter((it) => it.insumoKey && it.dosis);
+    const validos = items.filter((it) => it.dosis && (it.modo === "pendiente" ? it.nombrePendiente.trim() : it.insumoKey));
     if (!validos.length) { alert("Agregá al menos un insumo con su dosis."); return; }
     if (validos.some((it) => Number(it.dosis) <= 0)) { alert("La dosis tiene que ser un número mayor a 0."); return; }
     setGuardando(true);
     const itemsGuardar = validos.map((it) => {
-      const stock = stockInsumos.find((s) => `${s.nombre}||${s.puntoStockId || "sin_punto"}` === it.insumoKey);
       const dosis = Number(it.dosis);
       const litrosCalculados = dosis * superficieSel;
+      if (it.modo === "pendiente") {
+        return {
+          insumoNombre: it.nombrePendiente.trim(), puntoStockId: null, puntoStockNombre: "Pendiente de compra",
+          unidad: it.unidadPendiente || "Litros", dosisPorHa: dosis, litrosCalculados, litrosReales: null, confirmado: false, gastoId: null,
+          pendienteDeStock: true,
+        };
+      }
+      const stock = stockInsumos.find((s) => `${s.nombre}||${s.puntoStockId || "sin_punto"}` === it.insumoKey);
       return {
         insumoNombre: stock?.nombre || "", puntoStockId: stock?.puntoStockId || null, puntoStockNombre: stock?.puntoStockNombre || "Sin punto asignado",
         unidad: stock?.unidad || "Litros", dosisPorHa: dosis, litrosCalculados, litrosReales: null, confirmado: false, gastoId: null,
+        pendienteDeStock: false,
       };
     });
     await api.add({
@@ -2390,6 +2398,15 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
       const nuevosItems = orden.items.map((it, i) => (i === idx ? { ...it, litrosReales: litros, confirmado: true, gastoId: nuevoGasto.id } : it));
       await api.update(orden.id, { items: nuevosItems });
     } finally { setConfirmandoId(null); }
+  };
+
+  const asociarItemAStock = async (orden, idx, stockKey) => {
+    const stock = stockInsumos.find((s) => `${s.nombre}||${s.puntoStockId || "sin_punto"}` === stockKey);
+    if (!stock) return;
+    const nuevosItems = orden.items.map((it, i) => (i === idx ? {
+      ...it, insumoNombre: stock.nombre, puntoStockId: stock.puntoStockId || null, puntoStockNombre: stock.puntoStockNombre, unidad: stock.unidad, pendienteDeStock: false,
+    } : it));
+    await api.update(orden.id, { items: nuevosItems });
   };
 
   const exportarPDF = (orden) => {
@@ -2488,32 +2505,54 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
 
           <div>
             <div style={{ fontSize: 12, color: "#8A8570", marginBottom: 4 }}>Insumos a aplicar</div>
-            <div className="space-y-2">
+            <div className="space-y-3">
               {items.map((it, i) => {
                 const stock = stockInsumos.find((s) => `${s.nombre}||${s.puntoStockId || "sin_punto"}` === it.insumoKey);
+                const unidadDosis = it.modo === "pendiente" ? it.unidadPendiente : stock?.unidad;
                 const litrosCalc = it.dosis && superficieSel ? Number(it.dosis) * superficieSel : null;
                 return (
-                  <div key={i} className="flex gap-2 items-end flex-wrap">
-                    <div style={{ flex: 2, minWidth: 200 }}>
-                      <label style={{ fontSize: 11, color: "#8A8570" }}>Insumo (punto de stock)</label>
-                      <select className="cc-input" value={it.insumoKey} onChange={(e) => setItem(i, { ...it, insumoKey: e.target.value })}>
-                        <option value="">Elegir...</option>
-                        {[...stockInsumos].sort((a, b) => a.nombre.localeCompare(b.nombre)).map((s) => (
-                          <option key={`${s.nombre}||${s.puntoStockId || "sin_punto"}`} value={`${s.nombre}||${s.puntoStockId || "sin_punto"}`}>
-                            {s.nombre} — {s.puntoStockNombre} ({fmt(s.disponible, 1)} {abrevUnidad(s.unidad)} disp.)
-                          </option>
-                        ))}
-                      </select>
+                  <div key={i} className="p-3" style={{ background: "#F7F5EC", borderRadius: 8, border: "1px solid var(--line)" }}>
+                    <div className="flex gap-1 mb-2">
+                      <button type="button" onClick={() => setItem(i, { ...it, modo: "stock" })} className="cc-btn" style={{ padding: "5px 10px", fontSize: 11.5, background: it.modo !== "pendiente" ? "var(--soil)" : "#fff", color: it.modo !== "pendiente" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Ya lo tengo en stock</button>
+                      <button type="button" onClick={() => setItem(i, { ...it, modo: "pendiente" })} className="cc-btn" style={{ padding: "5px 10px", fontSize: 11.5, background: it.modo === "pendiente" ? "var(--gold)" : "#fff", color: it.modo === "pendiente" ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Todavía no lo tengo (voy a comprarlo)</button>
                     </div>
-                    <div style={{ width: 130 }}>
-                      <label style={{ fontSize: 11, color: "#8A8570" }}>Dosis{stock ? ` (${abrevUnidad(stock.unidad)}/ha)` : "/ha"}</label>
-                      <input className="cc-input" type="number" value={it.dosis} onChange={(e) => setItem(i, { ...it, dosis: e.target.value })} />
+                    <div className="flex gap-2 items-end flex-wrap">
+                      {it.modo === "pendiente" ? (
+                        <>
+                          <div style={{ flex: 2, minWidth: 180 }}>
+                            <label style={{ fontSize: 11, color: "#8A8570" }}>Nombre del insumo a comprar</label>
+                            <input className="cc-input" value={it.nombrePendiente} onChange={(e) => setItem(i, { ...it, nombrePendiente: e.target.value })} placeholder="Ej: Glifosato" />
+                          </div>
+                          <div style={{ width: 110 }}>
+                            <label style={{ fontSize: 11, color: "#8A8570" }}>Unidad</label>
+                            <select className="cc-input" value={it.unidadPendiente} onChange={(e) => setItem(i, { ...it, unidadPendiente: e.target.value })}>
+                              {UNIDADES_INSUMO.map((u) => <option key={u} value={u}>{u}</option>)}
+                            </select>
+                          </div>
+                        </>
+                      ) : (
+                        <div style={{ flex: 2, minWidth: 200 }}>
+                          <label style={{ fontSize: 11, color: "#8A8570" }}>Insumo (punto de stock)</label>
+                          <select className="cc-input" value={it.insumoKey} onChange={(e) => setItem(i, { ...it, insumoKey: e.target.value })}>
+                            <option value="">Elegir...</option>
+                            {[...stockInsumos].sort((a, b) => a.nombre.localeCompare(b.nombre)).map((s) => (
+                              <option key={`${s.nombre}||${s.puntoStockId || "sin_punto"}`} value={`${s.nombre}||${s.puntoStockId || "sin_punto"}`}>
+                                {s.nombre} — {s.puntoStockNombre} ({fmt(s.disponible, 1)} {abrevUnidad(s.unidad)} disp.)
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      <div style={{ width: 130 }}>
+                        <label style={{ fontSize: 11, color: "#8A8570" }}>Dosis{unidadDosis ? ` (${abrevUnidad(unidadDosis)}/ha)` : "/ha"}</label>
+                        <input className="cc-input" type="number" value={it.dosis} onChange={(e) => setItem(i, { ...it, dosis: e.target.value })} />
+                      </div>
+                      <div style={{ width: 150, fontSize: 12.5, color: "#8A8570" }}>
+                        Litros necesarios<br />
+                        <b style={{ color: "var(--ink)" }}>{litrosCalc !== null ? `${fmt(litrosCalc, 1)} ${abrevUnidad(unidadDosis)}` : "-"}</b>
+                      </div>
+                      {items.length > 1 && <button onClick={() => quitarItem(i)}><X size={19} color="var(--rust)" /></button>}
                     </div>
-                    <div style={{ width: 150, fontSize: 12.5, color: "#8A8570" }}>
-                      Litros necesarios<br />
-                      <b style={{ color: "var(--ink)" }}>{litrosCalc !== null ? `${fmt(litrosCalc, 1)} ${abrevUnidad(stock?.unidad)}` : "-"}</b>
-                    </div>
-                    {items.length > 1 && <button onClick={() => quitarItem(i)}><X size={19} color="var(--rust)" /></button>}
                   </div>
                 );
               })}
@@ -2561,7 +2600,7 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
                     </tr></thead>
                     <tbody>
                       {(orden.items || []).map((it, idx) => (
-                        <ItemOrdenFila key={idx} item={it} onConfirmar={(valor) => confirmarLitros(orden, idx, valor)} procesando={confirmandoId === `${orden.id}-${idx}`} puedeEditar={puedeEditar} />
+                        <ItemOrdenFila key={idx} item={it} onConfirmar={(valor) => confirmarLitros(orden, idx, valor)} onAsociar={(key) => asociarItemAStock(orden, idx, key)} stockInsumos={stockInsumos} procesando={confirmandoId === `${orden.id}-${idx}`} puedeEditar={puedeEditar} />
                       ))}
                     </tbody>
                   </table>
@@ -2575,8 +2614,51 @@ function OrdenesTrabajoView({ campanias, cultivos, lotes, stockInsumos, insumosC
   );
 }
 
-function ItemOrdenFila({ item, onConfirmar, procesando, puedeEditar }) {
+function ItemOrdenFila({ item, onConfirmar, onAsociar, stockInsumos, procesando, puedeEditar }) {
   const [valor, setValor] = useState(item.litrosReales != null ? String(item.litrosReales) : "");
+  const [asociando, setAsociando] = useState(false);
+  const [stockKey, setStockKey] = useState("");
+
+  if (item.pendienteDeStock && !item.confirmado) {
+    return (
+      <tr style={{ borderTop: "1px solid var(--line)", background: "#FDF3E0" }}>
+        <td className="px-3 py-2">
+          {item.insumoNombre}
+          <span className="cc-chip" style={{ background: "#F0DDB0", color: "#7A5A1E", marginLeft: 6 }}>Pendiente de compra</span>
+        </td>
+        <td className="px-3 py-2" colSpan={puedeEditar ? 1 : 2} style={{ color: "#8A8570" }}>Todavía no está en stock</td>
+        <td className="px-3 py-2 text-right cc-mono">{fmt(item.dosisPorHa, 2)} {abrevUnidad(item.unidad)}</td>
+        <td className="px-3 py-2 text-right cc-mono">{fmt(item.litrosCalculados, 1)} {abrevUnidad(item.unidad)}</td>
+        {puedeEditar ? (
+          <>
+            <td className="px-3 py-2 text-right">
+              {asociando ? (
+                <select className="cc-input" style={{ padding: "5px 8px", fontSize: 12 }} value={stockKey} onChange={(e) => setStockKey(e.target.value)}>
+                  <option value="">Elegir insumo comprado...</option>
+                  {[...stockInsumos].sort((a, b) => a.nombre.localeCompare(b.nombre)).map((s) => (
+                    <option key={`${s.nombre}||${s.puntoStockId || "sin_punto"}`} value={`${s.nombre}||${s.puntoStockId || "sin_punto"}`}>
+                      {s.nombre} — {s.puntoStockNombre} ({fmt(s.disponible, 1)} {abrevUnidad(s.unidad)} disp.)
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </td>
+            <td className="px-3 py-2 text-right">
+              {!asociando ? (
+                <button className="cc-btn cc-btn-ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => setAsociando(true)}>Ya lo compré</button>
+              ) : (
+                <div className="flex gap-1 justify-end">
+                  <button className="cc-btn cc-btn-primary" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => stockKey && onAsociar(stockKey)} disabled={!stockKey}>Asociar</button>
+                  <button className="cc-btn cc-btn-ghost" style={{ padding: "5px 10px", fontSize: 12 }} onClick={() => setAsociando(false)}>Cancelar</button>
+                </div>
+              )}
+            </td>
+          </>
+        ) : <td className="px-3 py-2" colSpan={2}></td>}
+      </tr>
+    );
+  }
+
   return (
     <tr style={{ borderTop: "1px solid var(--line)" }}>
       <td className="px-3 py-2">{item.insumoNombre}</td>
