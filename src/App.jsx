@@ -2828,7 +2828,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
       cultivoId: c.id, campaniaId: c.campaniaId, cultivoNombre: c.nombre, tipoCultivo: c.tipo || c.nombre, categoria: c.categoria,
       enSociedad: !!c.enSociedad, socios: c.socios || "",
       campaniaNombre: campania ? (campania.nombre || campania.anio) : "—", anio: campania?.anio || 0,
-      superficie, totalGastos, totalIngresos, margen: totalIngresos - totalGastos, rendimiento: superficie && totalTon ? totalTon / superficie : null,
+      superficie, totalGastos, totalIngresos, totalTon, margen: totalIngresos - totalGastos, rendimiento: superficie && totalTon ? totalTon / superficie : null,
       costoPorHa: superficie ? totalGastos / superficie : null, margenPorHa: superficie ? (totalIngresos - totalGastos) / superficie : null,
       porSocio,
     };
@@ -2841,6 +2841,21 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
   const porCultivoNombre = {};
   filas.forEach((f) => { (porCultivoNombre[f.tipoCultivo] ||= []).push(f); });
   const comparables = Object.entries(porCultivoNombre).filter(([, arr]) => arr.length > 1);
+
+  // Resumen agregado: todos los cultivos del mismo tipo (ej. "Soja") dentro del mismo año, sumados en una sola fila
+  const porTipoYAnio = {};
+  filas.forEach((f) => {
+    const key = `${f.tipoCultivo}||${f.anio}`;
+    if (!porTipoYAnio[key]) porTipoYAnio[key] = { tipoCultivo: f.tipoCultivo, anio: f.anio, campaniaNombre: f.campaniaNombre, categoria: f.categoria, superficie: 0, totalGastos: 0, totalIngresos: 0, totalTon: 0, cantidadCultivos: 0 };
+    const g = porTipoYAnio[key];
+    g.superficie += f.superficie; g.totalGastos += f.totalGastos; g.totalIngresos += f.totalIngresos; g.totalTon += f.totalTon || 0; g.cantidadCultivos += 1;
+  });
+  const filasPorTipo = Object.values(porTipoYAnio).map((g) => ({
+    ...g, margen: g.totalIngresos - g.totalGastos,
+    costoPorHa: g.superficie ? g.totalGastos / g.superficie : null,
+    margenPorHa: g.superficie ? (g.totalIngresos - g.totalGastos) / g.superficie : null,
+    rendimiento: g.superficie && g.totalTon ? g.totalTon / g.superficie : null,
+  })).sort((a, b) => b.anio - a.anio || a.tipoCultivo.localeCompare(b.tipoCultivo));
 
   const cultivoIdsActivos = new Set(cultivos.map((c) => c.id));
   const gastosActivos = gastos.filter((g) => cultivoIdsActivos.has(g.cultivoId));
@@ -2858,6 +2873,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
   const sociosGlobalExport = Array.from(new Set(gastosActivos.map((g) => (g.socio && g.socio.trim()) ? g.socio.trim() : "Sin asignar")));
   const exportar = () => exportarExcel("resumen_general_campo_costo", [
     { nombre: "Resumen", filas: filas.map((f) => ({ Campaña: f.campaniaNombre, Cultivo: f.cultivoNombre, Categoría: f.categoria, Sociedad: f.enSociedad ? (f.socios || "Sí") : "Individual", "Superficie (ha)": f.superficie, "Rinde (tn/ha)": f.rendimiento, "Total gastos": f.totalGastos, "Total ingresos": f.totalIngresos, Margen: f.margen, "Gasto/ha": f.costoPorHa, "Margen/ha": f.margenPorHa })) },
+    { nombre: "Por tipo y año", filas: filasPorTipo.map((f) => ({ Año: f.anio, "Tipo de cultivo": f.tipoCultivo, "Cantidad de cultivos": f.cantidadCultivos, "Superficie (ha)": f.superficie, "Rinde (tn/ha)": f.rendimiento, "Gasto/ha": f.costoPorHa, "Margen/ha": f.margenPorHa, "Total gastos": f.totalGastos, "Total ingresos": f.totalIngresos, Margen: f.margen })) },
     { nombre: "Aporte por socio por cultivo", filas: filas.map((f) => { const fila = { Campaña: f.campaniaNombre, Cultivo: f.cultivoNombre }; sociosGlobalExport.forEach((s) => { fila[s] = f.porSocio[s] || 0; }); fila["Total"] = f.totalGastos; return fila; }) },
     { nombre: "Aporte por socio", filas: Object.entries(aportesSocio).map(([socio, monto]) => ({ Socio: socio, Monto: monto, "% del total": totalAportes ? (monto / totalAportes) * 100 : 0 })) },
   ]);
@@ -3055,6 +3071,42 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {filasPorTipo.length > 0 && (
+        <div>
+          <div className="cc-h" style={{ fontSize: 17, fontWeight: 600, marginBottom: 4 }}>Resumen por tipo de cultivo, por año</div>
+          <div style={{ fontSize: 12.5, color: "#8A8570", marginBottom: 10 }}>Suma todos los cultivos del mismo tipo (ej. varios lotes de Soja) dentro de cada año, en una sola fila.</div>
+          <div className="cc-card overflow-hidden">
+            <table className="w-full" style={{ fontSize: 13 }}>
+              <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}>
+                <th className="px-3 py-2">Año</th><th className="px-3 py-2">Tipo de cultivo</th><th className="px-3 py-2 text-right">Cultivos</th>
+                <th className="px-3 py-2 text-right">Ha</th><th className="px-3 py-2 text-right">Rinde tn/ha</th>
+                <th className="px-3 py-2 text-right">Gasto/ha</th><th className="px-3 py-2 text-right">Margen/ha</th>
+                <th className="px-3 py-2 text-right">Gastos</th><th className="px-3 py-2 text-right">Ingresos</th><th className="px-3 py-2 text-right">Margen</th>
+              </tr></thead>
+              <tbody>
+                {filasPorTipo.map((f) => (
+                  <tr key={`${f.tipoCultivo}||${f.anio}`} style={{ borderTop: "1px solid var(--line)" }}>
+                    <td className="px-3 py-2 cc-mono">{f.anio}</td>
+                    <td className="px-3 py-2">
+                      <span className="cc-chip" style={{ background: CAT_COLOR[f.categoria] + "22", color: CAT_COLOR[f.categoria], marginRight: 6 }}>{f.categoria === "verano" ? "V" : "I"}</span>
+                      {f.tipoCultivo}
+                    </td>
+                    <td className="px-3 py-2 text-right cc-mono">{f.cantidadCultivos}</td>
+                    <td className="px-3 py-2 text-right cc-mono">{f.superficie ? fmt(f.superficie, 1) : "-"}</td>
+                    <td className="px-3 py-2 text-right cc-mono">{f.rendimiento !== null ? fmt(f.rendimiento, 2) : "-"}</td>
+                    <td className="px-3 py-2 text-right cc-mono">{f.costoPorHa !== null ? fmtUSD(f.costoPorHa) : "-"}</td>
+                    <td className="px-3 py-2 text-right cc-mono" style={{ color: f.margenPorHa >= 0 ? "var(--soil-light)" : "var(--rust)" }}>{f.margenPorHa !== null ? fmtUSD(f.margenPorHa) : "-"}</td>
+                    <td className="px-3 py-2 text-right cc-mono">{fmtUSD(f.totalGastos)}</td>
+                    <td className="px-3 py-2 text-right cc-mono">{fmtUSD(f.totalIngresos)}</td>
+                    <td className="px-3 py-2 text-right cc-mono" style={{ fontWeight: 700, color: f.margen >= 0 ? "var(--soil-light)" : "var(--rust)" }}>{fmtUSD(f.margen)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
