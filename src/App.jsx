@@ -600,9 +600,15 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen, puedeEditar = tru
   const [categoria, setCategoria] = useState("verano");
   const [nombre, setNombre] = useState(CULTIVOS_VERANO[0]);
   const [nombreCustom, setNombreCustom] = useState("");
+  const [enSociedad, setEnSociedad] = useState(false);
+  const [socios, setSocios] = useState("");
   const opciones = categoria === "verano" ? CULTIVOS_VERANO : CULTIVOS_INVIERNO;
+  const sociosSugeridos = Array.from(new Set(cultivos.map((c) => c.socios).filter(Boolean)));
 
-  const crear = () => { api.add({ campaniaId: campania.id, categoria, tipo: nombre, nombre: nombreCustom.trim() || nombre }); setNombreCustom(""); };
+  const crear = () => {
+    api.add({ campaniaId: campania.id, categoria, tipo: nombre, nombre: nombreCustom.trim() || nombre, enSociedad, socios: enSociedad ? socios.trim() : "" });
+    setNombreCustom(""); setEnSociedad(false); setSocios("");
+  };
   const eliminar = (id) => { if (confirm("Este cultivo se moverá a la papelera (se puede restaurar después). ¿Continuar?")) api.remove(id); };
 
   return (
@@ -628,6 +634,20 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen, puedeEditar = tru
             <input className="cc-input" value={nombreCustom} onChange={(e) => setNombreCustom(e.target.value)} placeholder={`Ej: ${nombre} 1ra, ${nombre} Norte...`} />
             <div style={{ fontSize: 11.5, color: "#8A8570", marginTop: 4 }}>Si lo dejás vacío, se usa "{nombre}". Útil si vas a tener más de un lote de {nombre} en la misma campaña.</div>
           </div>
+          <div style={{ marginTop: 12 }}>
+            <label style={{ fontSize: 12, color: "#8A8570" }}>¿Este cultivo es en sociedad?</label>
+            <div className="flex gap-1">
+              <button type="button" onClick={() => setEnSociedad(false)} className="cc-btn" style={{ padding: "8px 12px", fontSize: 12.5, background: !enSociedad ? "var(--soil)" : "#fff", color: !enSociedad ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>No, es individual</button>
+              <button type="button" onClick={() => setEnSociedad(true)} className="cc-btn" style={{ padding: "8px 12px", fontSize: 12.5, background: enSociedad ? "var(--gold)" : "#fff", color: enSociedad ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Sí, en sociedad</button>
+            </div>
+            {enSociedad && (
+              <div style={{ marginTop: 8, maxWidth: 320 }}>
+                <label style={{ fontSize: 12, color: "#8A8570" }}>¿Con quién? (socio o socios)</label>
+                <input className="cc-input" list="socios-cultivo" value={socios} onChange={(e) => setSocios(e.target.value)} placeholder="Ej: Juan Pérez, Hermanos Frache SRL" />
+                <datalist id="socios-cultivo">{sociosSugeridos.map((s) => <option key={s} value={s} />)}</datalist>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -640,7 +660,10 @@ function CultivosDeCampania({ campania, cultivos, api, onOpen, puedeEditar = tru
               <div className="flex items-start justify-between">
                 <div>
                   <div className="cc-h" style={{ fontSize: 17, fontWeight: 600 }}>{c.nombre}</div>
-                  <span className="cc-chip" style={{ background: CAT_COLOR[c.categoria] + "22", color: CAT_COLOR[c.categoria] }}>{c.categoria === "verano" ? "Verano" : "Invierno"}</span>
+                  <div className="flex items-center gap-1 flex-wrap" style={{ marginTop: 2 }}>
+                    <span className="cc-chip" style={{ background: CAT_COLOR[c.categoria] + "22", color: CAT_COLOR[c.categoria] }}>{c.categoria === "verano" ? "Verano" : "Invierno"}</span>
+                    {c.enSociedad && <span className="cc-chip" style={{ background: "#EDE7F6", color: "#5B4B8A" }}>Sociedad{c.socios ? `: ${c.socios}` : ""}</span>}
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {c.categoria === "verano" ? <Sun color="var(--gold)" size={21} /> : <Snowflake color="var(--frost)" size={21} />}
@@ -738,6 +761,7 @@ function CultivoDetail({ cultivo, lotes, lotesApi, cultivosApi, user, stockInsum
           </div>
 
           <PresupuestoCard cultivo={cultivo} cultivosApi={cultivosApi} totalGastos={totalGastos} />
+          <SociedadCard cultivo={cultivo} cultivosApi={cultivosApi} />
 
           {!superficie ? (
             <div className="flex items-start gap-2" style={{ background: "#FDF3E0", border: "1px solid var(--gold)", borderRadius: 8, padding: "10px 12px" }}>
@@ -1014,6 +1038,57 @@ function PresupuestoCard({ cultivo, cultivosApi, totalGastos }) {
       </div>
       {pct >= 100 && <div style={{ fontSize: 12, color: "var(--rust)", marginTop: 6 }}>Ya superaste el presupuesto estimado.</div>}
       {pct >= 80 && pct < 100 && <div style={{ fontSize: 12, color: "#7A5A1E", marginTop: 6 }}>Te estás acercando al presupuesto estimado.</div>}
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/*  Sociedad del cultivo (individual o compartido con otro/s socio/s)  */
+/* ------------------------------------------------------------------ */
+function SociedadCard({ cultivo, cultivosApi }) {
+  const [editando, setEditando] = useState(false);
+  const [enSociedad, setEnSociedad] = useState(!!cultivo.enSociedad);
+  const [socios, setSocios] = useState(cultivo.socios || "");
+
+  const guardar = async () => {
+    if (enSociedad && !socios.trim()) { alert("Ingresá el nombre del socio o socios."); return; }
+    await cultivosApi.update(cultivo.id, { enSociedad, socios: enSociedad ? socios.trim() : "" });
+    setEditando(false);
+  };
+  const cancelar = () => { setEditando(false); setEnSociedad(!!cultivo.enSociedad); setSocios(cultivo.socios || ""); };
+
+  if (!editando) {
+    return (
+      <div className="cc-card p-4 flex items-center justify-between flex-wrap gap-2">
+        <div style={{ fontSize: 13 }}>
+          {cultivo.enSociedad ? (
+            <span><b>En sociedad</b> con: {cultivo.socios || "sin especificar"}</span>
+          ) : (
+            <span style={{ color: "#8A8570" }}>Cultivo individual (no está en sociedad)</span>
+          )}
+        </div>
+        <button className="cc-btn cc-btn-ghost" onClick={() => setEditando(true)}><Pencil size={16} /> Editar</button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="cc-card p-4">
+      <div className="cc-h" style={{ fontSize: 15, fontWeight: 600, marginBottom: 10 }}>¿Este cultivo es en sociedad?</div>
+      <div className="flex gap-1 mb-3">
+        <button type="button" onClick={() => setEnSociedad(false)} className="cc-btn" style={{ padding: "8px 12px", fontSize: 12.5, background: !enSociedad ? "var(--soil)" : "#fff", color: !enSociedad ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>No, es individual</button>
+        <button type="button" onClick={() => setEnSociedad(true)} className="cc-btn" style={{ padding: "8px 12px", fontSize: 12.5, background: enSociedad ? "var(--gold)" : "#fff", color: enSociedad ? "#fff" : "var(--ink)", border: "1px solid var(--line)" }}>Sí, en sociedad</button>
+      </div>
+      {enSociedad && (
+        <div style={{ maxWidth: 320, marginBottom: 12 }}>
+          <label style={{ fontSize: 12, color: "#8A8570" }}>¿Con quién? (socio o socios)</label>
+          <input className="cc-input" value={socios} onChange={(e) => setSocios(e.target.value)} placeholder="Ej: Juan Pérez, Hermanos Frache SRL" />
+        </div>
+      )}
+      <div className="flex gap-2">
+        <button className="cc-btn cc-btn-primary" onClick={guardar}><CheckCircle2 size={17} /> Guardar</button>
+        <button className="cc-btn cc-btn-ghost" onClick={cancelar}><X size={17} /> Cancelar</button>
+      </div>
     </div>
   );
 }
@@ -2751,6 +2826,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
     });
     return {
       cultivoId: c.id, campaniaId: c.campaniaId, cultivoNombre: c.nombre, tipoCultivo: c.tipo || c.nombre, categoria: c.categoria,
+      enSociedad: !!c.enSociedad, socios: c.socios || "",
       campaniaNombre: campania ? (campania.nombre || campania.anio) : "—", anio: campania?.anio || 0,
       superficie, totalGastos, totalIngresos, margen: totalIngresos - totalGastos, rendimiento: superficie && totalTon ? totalTon / superficie : null,
       costoPorHa: superficie ? totalGastos / superficie : null, margenPorHa: superficie ? (totalIngresos - totalGastos) / superficie : null,
@@ -2781,7 +2857,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
 
   const sociosGlobalExport = Array.from(new Set(gastosActivos.map((g) => (g.socio && g.socio.trim()) ? g.socio.trim() : "Sin asignar")));
   const exportar = () => exportarExcel("resumen_general_campo_costo", [
-    { nombre: "Resumen", filas: filas.map((f) => ({ Campaña: f.campaniaNombre, Cultivo: f.cultivoNombre, Categoría: f.categoria, "Superficie (ha)": f.superficie, "Rinde (tn/ha)": f.rendimiento, "Total gastos": f.totalGastos, "Total ingresos": f.totalIngresos, Margen: f.margen, "Gasto/ha": f.costoPorHa, "Margen/ha": f.margenPorHa })) },
+    { nombre: "Resumen", filas: filas.map((f) => ({ Campaña: f.campaniaNombre, Cultivo: f.cultivoNombre, Categoría: f.categoria, Sociedad: f.enSociedad ? (f.socios || "Sí") : "Individual", "Superficie (ha)": f.superficie, "Rinde (tn/ha)": f.rendimiento, "Total gastos": f.totalGastos, "Total ingresos": f.totalIngresos, Margen: f.margen, "Gasto/ha": f.costoPorHa, "Margen/ha": f.margenPorHa })) },
     { nombre: "Aporte por socio por cultivo", filas: filas.map((f) => { const fila = { Campaña: f.campaniaNombre, Cultivo: f.cultivoNombre }; sociosGlobalExport.forEach((s) => { fila[s] = f.porSocio[s] || 0; }); fila["Total"] = f.totalGastos; return fila; }) },
     { nombre: "Aporte por socio", filas: Object.entries(aportesSocio).map(([socio, monto]) => ({ Socio: socio, Monto: monto, "% del total": totalAportes ? (monto / totalAportes) * 100 : 0 })) },
   ]);
@@ -2856,7 +2932,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
       <div className="cc-card overflow-hidden">
         <table className="w-full" style={{ fontSize: 13 }}>
           <thead><tr style={{ background: "#EEEADA", textAlign: "left" }}>
-            <th className="px-3 py-2">Campaña</th><th className="px-3 py-2">Cultivo</th><th className="px-3 py-2 text-right">Ha</th>
+            <th className="px-3 py-2">Campaña</th><th className="px-3 py-2">Cultivo</th><th className="px-3 py-2">Sociedad</th><th className="px-3 py-2 text-right">Ha</th>
             <th className="px-3 py-2 text-right">Rinde tn/ha</th>
             <th className="px-3 py-2 text-right">Gastos</th><th className="px-3 py-2 text-right">Ingresos</th><th className="px-3 py-2 text-right">Margen</th>
           </tr></thead>
@@ -2868,6 +2944,9 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
                   <span className="cc-chip" style={{ background: CAT_COLOR[f.categoria] + "22", color: CAT_COLOR[f.categoria], marginRight: 6 }}>{f.categoria === "verano" ? "V" : "I"}</span>
                   {f.cultivoNombre}
                 </td>
+                <td className="px-3 py-2" style={{ fontSize: 12 }}>
+                  {f.enSociedad ? <span className="cc-chip" style={{ background: "#EDE7F6", color: "#5B4B8A" }}>{f.socios || "Sociedad"}</span> : <span style={{ color: "#C9C3AC" }}>Individual</span>}
+                </td>
                 <td className="px-3 py-2 text-right cc-mono">{f.superficie ? fmt(f.superficie, 1) : "-"}</td>
                 <td className="px-3 py-2 text-right cc-mono">{f.rendimiento !== null ? fmt(f.rendimiento, 2) : "-"}</td>
                 <td className="px-3 py-2 text-right cc-mono">{fmtUSD(f.totalGastos)}</td>
@@ -2877,7 +2956,7 @@ function ResumenGeneralView({ campanias, cultivos, gastos, ventas, remitos, lote
             ))}
           </tbody>
           <tfoot><tr style={{ borderTop: "2px solid var(--line)", fontWeight: 700 }}>
-            <td className="px-3 py-2" colSpan={4}>Total</td>
+            <td className="px-3 py-2" colSpan={5}>Total</td>
             <td className="px-3 py-2 text-right cc-mono">{fmtUSD(totalGastosGeneral)}</td>
             <td className="px-3 py-2 text-right cc-mono">{fmtUSD(totalIngresosGeneral)}</td>
             <td className="px-3 py-2 text-right cc-mono">{fmtUSD(margenGeneral)}</td>
